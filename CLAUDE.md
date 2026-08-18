@@ -19,18 +19,31 @@
 ## 架構
 
 `index.html` 由上到下分成三段：`<style>`、HTML 結構、單一 `<script>`。
+最上面有兩個必須手動維護的常數：`ADMIN_EMAILS`（誰能改設定）與 `FIREBASE_CONFIG`
+（一定要寫在程式碼裡，成員的裝置才連得上；它不是密鑰，防護靠 Firestore 規則）。
 
-JS 的區塊順序（每段前面都有 `══` 分隔註解）：
+### 兩本帳
 
-1. **設定**——`S` 是目前設定（幣別、符號、匯率、分類、付款方式），
-   `DEFAULT_SETTINGS` 是預設值；`applySettings()` 負責把設定灌進所有下拉選單與按鈕。
-2. **資料存取**——`getItems()` / `saveItems()`。永遠先寫 `localStorage`，
-   有登入 Firebase 才額外 `fbPush()`。縮圖走 `getThumb()` / `setThumb()`，
-   刻意**不進雲端**（Firestore 單一文件 1 MB 上限）。
-3. **記錄列表**——`renderLedger()` 產生「日期 → 店家 → 品項」兩層分組 HTML；
-   點擊全部走 `#ledgerList` 上的**事件委派**（`data-act` 屬性），
-   不要改回 inline `onclick`，店名含引號時會爆掉。
-4. **項目編輯 / 計算機 / AI 收據辨識 / 統計 / 備份 / Firebase**。
+```
+BOOKS.me      個人帳 → Firestore users/{uid}/items/*    只有本人（規則強制）
+BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
+```
+
+`currentBook` 是目前檢視的帳本，記帳一律記進它。**一筆消費 = 一份 Firestore 文件**，
+不要改回「整本帳存成一份文件」的寫法——多人同時記帳會互相覆蓋，也會撞上 1 MB 上限。
+寫入一律走 `putItems(book, [items])` / `dropItems(book, [ids])`，它們負責本機與雲端兩邊。
+
+### 設定與權限
+
+設定放 `config/app`，`isAdmin()`（比對 `ADMIN_EMAILS`）決定能不能寫，
+非管理員的設定區塊會被加上 `.locked` class 變唯讀。所有裝置都 `onSnapshot` 監聽
+這份文件，管理員一改立刻套用。Gemini API Key 也在裡面，全體共用。
+
+### 分帳結算
+
+`computeBalances()` 算每個人的淨額（先墊金額 − 應分攤），四捨五入的誤差補到絕對值最大的人
+身上確保總和為 0；`computeTransfers()` 用貪婪法把債權債務兩兩抵銷成最少筆轉帳。
+每筆公帳的 `payer`（先墊的人）與 `split`（分攤名單）是計算依據，預設全員均分。
 
 ### 資料結構
 
@@ -40,18 +53,21 @@ item = {
   currency: 'JPY',        // 幣別代碼
   rate: 0.215,            // 記帳當下的匯率（外幣才有）
   unitPrice, qty, amt,    // amt = unitPrice × qty
-  isTaxFree: true|false   // 沒設定就沒有這個欄位
+  isTaxFree: true|false,  // 沒設定就沒有這個欄位
+  // 只有公帳才有：
+  by, payer,              // 誰記的／誰先墊的（Email）
+  split: [email, ...]     // 分攤名單
 }
 ```
 
-`toHome(item)` 負責換算成主要幣別：幣別等於目前設定的外幣就用「現在的匯率」
+`toHome(item)` 換算成主要幣別：幣別等於目前設定的外幣就用「現在的匯率」
 （改匯率會即時反映到全部記錄），否則用記錄裡存的 `item.rate`。
 
 ### AI 辨識
 
-Google Gemini（`GEMINI_MODEL`）。prompt 在 `receiptPrompt()`，
-重點是要求純 JSON、排除稅金／小計／手續費行，並在 `applyReceiptResult()` 做
-「品項加總 vs 收據 total」的比例校正。回傳被截斷時 `parseGeminiJson()` 會嘗試修補括號。
+Google Gemini（`GEMINI_MODEL`）。prompt 在 `receiptPrompt()`，重點是要求純 JSON、
+排除稅金／小計／手續費行，並在 `applyReceiptResult()` 做「品項加總 vs 收據 total」的
+比例校正。回傳被截斷時 `parseGeminiJson()` 會嘗試修補括號。
 
 ## 色票
 

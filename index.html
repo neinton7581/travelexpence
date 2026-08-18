@@ -603,6 +603,82 @@ button { cursor: pointer; }
   background: #f0ebe3; color: #576f72; border: none; border-radius: 12px;
   padding: 0.3rem 0.7rem; font-size: 0.7rem; font-weight: 700;
 }
+
+/* ══════════ 帳本切換 ══════════ */
+.book-tabs {
+  display: flex; gap: 0.25rem;
+  background: var(--card-2); border-radius: 11px;
+  padding: 0.22rem; margin-top: 0.55rem;
+}
+.book-tab {
+  flex: 1; padding: 0.42rem 0.5rem; border: none; background: transparent;
+  border-radius: 9px; font-size: 0.78rem; font-weight: 600; color: var(--ink-2);
+  display: flex; align-items: center; justify-content: center; gap: 0.3rem;
+}
+.book-tab.active {
+  background: var(--card); color: var(--accent-deep);
+  box-shadow: 0 1px 3px rgba(87,111,114,0.16);
+}
+.book-tab .book-sum { font-size: 0.68rem; font-weight: 500; opacity: 0.75; }
+.book-hint {
+  font-size: 0.7rem; color: var(--clay-deep);
+  background: rgba(140,117,97,0.1); border: 1px solid rgba(140,117,97,0.22);
+  border-radius: 10px; padding: 0.6rem 0.8rem; margin-bottom: 0.75rem; line-height: 1.6;
+}
+.tag.who { background: rgba(125,157,156,0.2); color: var(--accent-deep); font-weight: 600; }
+.locked-note {
+  font-size: 0.68rem; color: var(--clay-deep); line-height: 1.6;
+  background: rgba(140,117,97,0.1); border-radius: 8px;
+  padding: 0.5rem 0.7rem; margin: 0 0.9rem 0.6rem;
+}
+.locked input, .locked select, .locked textarea, .locked .set-btn {
+  opacity: 0.5; pointer-events: none;
+}
+.who-chip {
+  font-size: 0.62rem; background: rgba(95,125,99,0.16); color: var(--green);
+  border-radius: 6px; padding: 0.15rem 0.45rem; white-space: nowrap;
+}
+
+/* ══════════ 分攤 chips ══════════ */
+.f-label {
+  font-size: 0.75rem; color: var(--ink-2); white-space: nowrap;
+  min-width: 3rem; flex-shrink: 0;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; flex: 1; }
+.chip {
+  font-size: 0.72rem; padding: 0.32rem 0.6rem; border-radius: 999px;
+  border: 1px solid rgba(87,111,114,0.25); background: transparent;
+  color: var(--ink-2); line-height: 1.2;
+}
+.chip.on {
+  background: var(--accent-deep); border-color: var(--accent-deep);
+  color: var(--bg); font-weight: 600;
+}
+.chips-empty { font-size: 0.7rem; color: var(--clay-deep); }
+
+/* ══════════ 結算 ══════════ */
+.settle-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0; border-bottom: 1px solid rgba(87,111,114,0.09);
+  font-size: 0.83rem;
+}
+.settle-row:last-child { border-bottom: none; }
+.settle-dir { font-size: 0.68rem; padding: 0.15rem 0.45rem; border-radius: 6px; white-space: nowrap; }
+.settle-dir.pay { background: rgba(164,99,92,0.14); color: var(--red); }
+.settle-dir.get { background: rgba(95,125,99,0.16); color: var(--green); }
+.settle-who { flex: 1; color: var(--ink); }
+.settle-amt { font-weight: 700; color: var(--accent-deep); }
+.settle-net {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0.5rem 0 0.7rem; border-bottom: 1px solid rgba(87,111,114,0.12); margin-bottom: 0.5rem;
+}
+.settle-net-num { font-size: 1.25rem; font-weight: 800; }
+.settle-sub { font-size: 0.7rem; color: var(--ink-2); }
+.settle-all-toggle {
+  width: 100%; margin-top: 0.7rem; padding: 0.5rem; border-radius: 9px;
+  border: 1px solid var(--line); background: rgba(87,111,114,0.05);
+  font-size: 0.75rem; color: var(--ink-2);
+}
 </style>
 </head>
 <body>
@@ -620,6 +696,10 @@ button { cursor: pointer; }
     <span class="app-total-num" id="grandTotal">NT$0</span>
     <span class="app-total-label" id="grandTotalSub">共 0 筆</span>
   </div>
+  <div class="book-tabs">
+    <button class="book-tab active" id="tab-me"     onclick="switchBook('me')">👤 我的帳<span class="book-sum" id="sum-me"></span></button>
+    <button class="book-tab"        id="tab-shared" onclick="switchBook('shared')">👥 公帳<span class="book-sum" id="sum-shared"></span></button>
+  </div>
 </header>
 
 <!-- ══════════ MAIN ══════════ -->
@@ -628,10 +708,11 @@ button { cursor: pointer; }
   <!-- 新增記帳 -->
   <section class="panel" id="addPanel">
     <div class="panel-hd clickable" onclick="togglePanel('addPanel')">
-      <span>✏️ 新增記帳</span>
+      <span id="addPanelTitle">✏️ 新增記帳</span>
       <span class="panel-arrow">▼</span>
     </div>
     <div class="panel-body">
+      <div class="book-hint" id="bookHint" style="display:none;"></div>
       <div class="field-row">
         <input class="f-input" id="fDate" type="date">
         <select class="f-select" id="fCat"></select>
@@ -653,6 +734,16 @@ button { cursor: pointer; }
         <select class="f-select" id="fPay"></select>
         <button class="tax-btn" id="fTaxBtn" onclick="toggleFormTax()">稅制</button>
       </div>
+      <div id="sharedFields" style="display:none;">
+        <div class="field-row">
+          <span class="f-label">付款人</span>
+          <select class="f-select" id="fPayer"></select>
+        </div>
+        <div class="field-row" style="align-items:flex-start;">
+          <span class="f-label" style="padding-top:0.3rem;">分攤</span>
+          <div class="chips" id="fSplit"></div>
+        </div>
+      </div>
       <div class="field-row">
         <button class="ghost-btn" onclick="document.getElementById('photoInput').click()">📷 附圖</button>
         <button class="ghost-btn scan" onclick="document.getElementById('scanInput').click()">🤖 掃描收據</button>
@@ -660,7 +751,7 @@ button { cursor: pointer; }
         <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event)">
         <input type="file" id="scanInput" accept="image/*" style="display:none" onchange="handleReceiptScan(event)">
       </div>
-      <button class="save-btn" onclick="addEntry()">＋ 儲存記帳</button>
+      <button class="save-btn" id="saveBtn" onclick="addEntry()">＋ 儲存記帳</button>
     </div>
   </section>
 
@@ -736,8 +827,25 @@ button { cursor: pointer; }
     </div>
     <div class="modal-body">
 
+      <div id="adminNote"></div>
+
+      <!-- 同行成員（分帳用）-->
+      <div class="set-section" id="secMembers">
+        <div class="set-title">👥 同行成員</div>
+        <div class="set-row" style="flex-direction:column;align-items:stretch;gap:0.35rem;">
+          <textarea class="set-area" id="setMembers" style="min-height:4.5rem;"
+            placeholder="一行一個人，格式：Email, 名字
+neinton7581@gmail.com, 我
+friend@gmail.com, 阿明"></textarea>
+        </div>
+        <div class="set-hint">
+          公帳的分攤與結算依這份名單計算，Email 要跟 Firebase 建立的登入帳號一致。
+          名單有變動時，舊紀錄的分攤對象不會自動更新。
+        </div>
+      </div>
+
       <!-- 幣別與匯率 -->
-      <div class="set-section">
+      <div class="set-section" id="secCurrency">
         <div class="set-title">💱 幣別與匯率</div>
         <div class="set-row">
           <span class="set-label">主要幣別</span>
@@ -758,7 +866,7 @@ button { cursor: pointer; }
       </div>
 
       <!-- 分類與付款方式 -->
-      <div class="set-section">
+      <div class="set-section" id="secCats">
         <div class="set-title">🏷 分類與付款方式</div>
         <div class="set-row" style="flex-direction:column;align-items:stretch;gap:0.35rem;">
           <span class="set-label" style="min-width:0;">消費分類</span>
@@ -772,7 +880,7 @@ button { cursor: pointer; }
       </div>
 
       <!-- AI 辨識 -->
-      <div class="set-section">
+      <div class="set-section" id="secAi">
         <div class="set-title">🤖 AI 收據辨識</div>
         <div class="set-row">
           <span class="set-label">API Key</span>
@@ -781,12 +889,14 @@ button { cursor: pointer; }
         </div>
         <div class="set-hint">
           使用 Google Gemini 辨識收據照片。到 <b>aistudio.google.com/apikey</b> 免費申請。
-          Key 只存在這台裝置的瀏覽器裡，不會上傳、也不會進到雲端同步。
+          由管理員設定一次，<b>所有成員共用這把 Key</b>，其他人不用各自申請。<br>
+          ⚠️ 共用的代價：這把 Key 會傳到每位成員的瀏覽器，技術上有辦法被取出。
+          建議在 Google AI Studio 幫這把 Key 設用量上限。
         </div>
       </div>
 
       <!-- 雲端同步 -->
-      <div class="set-section">
+      <div class="set-section" id="secCloud">
         <div class="set-title">☁️ 雲端同步（Firebase）</div>
         <div id="fbAuthStatus" style="padding:0.5rem 0.9rem 0.7rem;">
           <div class="fb-note">載入中…</div>
@@ -806,20 +916,21 @@ button { cursor: pointer; }
           </div>
         </div>
         <div class="set-hint">
-          留空＝只存在本機。填入後可用同一組帳號在多台裝置即時同步（需在 Firebase Console 建立專案、
-          開啟 Firestore 與 Email/密碼登入）。詳細步驟見 repo 的 README。
+          正常情況下 Firebase 設定是寫在程式碼裡的，這個欄位只是管理員測試用的備援。<br>
+          每個人的帳號由管理員在 Firebase Console → Authentication 建立，這個 App 不開放自行註冊。
+          詳細步驟見 repo 的 README。
         </div>
       </div>
 
       <!-- 資料備份 -->
-      <div class="set-section">
+      <div class="set-section" id="secBackup">
         <div class="set-title">💾 資料備份</div>
         <div class="set-row" style="gap:0.4rem;">
           <button class="set-btn" style="flex:1;" onclick="exportJson()">匯出 JSON</button>
           <button class="set-btn" style="flex:1;" onclick="document.getElementById('importInput').click()">匯入 JSON</button>
           <input type="file" id="importInput" accept="application/json,.json" style="display:none" onchange="importJson(event)">
         </div>
-        <div class="set-hint">匯出檔含全部記錄與設定（不含收據縮圖）。匯入時可選擇合併或覆蓋。</div>
+        <div class="set-hint">匯出檔含兩本帳的全部記錄與設定（不含收據縮圖）。匯入時會依 id 合併，不會蓋掉現有資料。</div>
       </div>
 
       <div style="text-align:center;font-size:0.66rem;color:rgba(87,111,114,0.5);padding:0.4rem 0 0.2rem;">
@@ -844,6 +955,17 @@ button { cursor: pointer; }
       <button class="cur-btn" id="receiptCurBtn" onclick="toggleReceiptCurrency()">¥ JPY</button>
       <select class="f-select" id="receiptCat"></select>
       <select class="f-select" id="receiptPay"></select>
+      <button class="cur-btn" id="receiptBookBtn" onclick="toggleReceiptBook()">👤 我的帳</button>
+    </div>
+    <div id="receiptShared" style="display:none;margin-bottom:0.6rem;">
+      <div class="field-row" style="margin-bottom:0.4rem;">
+        <span class="f-label">付款人</span>
+        <select class="f-select" id="receiptPayer"></select>
+      </div>
+      <div class="field-row" style="align-items:flex-start;margin-bottom:0;">
+        <span class="f-label" style="padding-top:0.3rem;">分攤</span>
+        <div class="chips" id="receiptSplit"></div>
+      </div>
     </div>
     <button class="receipt-save" id="receiptSaveBtn" onclick="confirmReceiptSave()">確認儲存</button>
     <div class="receipt-note" id="receiptSaveNote">儲存後會寫入帳本</div>
@@ -886,6 +1008,16 @@ button { cursor: pointer; }
     <label>稅制</label>
     <button class="tax-btn" id="editTaxBtn" onclick="toggleEditTax()">稅制</button>
   </div>
+  <div id="editSharedFields" style="display:none;">
+    <div class="sheet-row">
+      <label>付款人</label>
+      <select id="editPayer"></select>
+    </div>
+    <div class="sheet-row" style="align-items:flex-start;">
+      <label style="padding-top:0.3rem;">分攤</label>
+      <div class="chips" id="editSplit"></div>
+    </div>
+  </div>
   <div class="sheet-actions">
     <button class="sheet-cancel" onclick="closeItemEdit()">取消</button>
     <button class="sheet-save" onclick="saveItemEdit()">儲存</button>
@@ -904,18 +1036,51 @@ button { cursor: pointer; }
 
 <script>
 /* ══════════════════════════════════════════════════════════
-   旅行記帳 — 單檔 PWA
-   資料一律先寫 localStorage；設定了 Firebase 並登入後才額外同步雲端
+   旅行記帳 — 單檔 PWA（多人共用版）
+
+   兩本帳：
+     me      個人帳 —— 存在 users/{uid}/items，Firestore 規則鎖死，只有本人讀得到
+     shared  公帳   —— 存在 shared_items，所有登入成員共用，可分攤與結算
+   應用程式設定放 config/app，只有 ADMIN_EMAILS 裡的帳號可寫，其他人即時同步套用。
+   沒設定 Firebase 或沒登入時，只有個人帳可用（純本機 localStorage）。
    ══════════════════════════════════════════════════════════ */
 
-var APP_VERSION = 'v1.0.0';
+var APP_VERSION = 'v2.0.0';
+
+/* ── 管理員：只有這些帳號能改設定（要與 Firestore 規則裡的名單一致）── */
+var ADMIN_EMAILS = ['neinton7581@gmail.com'];
+
+/* ── Firebase 設定 ──────────────────────────────────────────
+   必須寫在程式碼裡：朋友的裝置要先有這段才連得上 Firestore。
+   這不是密鑰（網頁版 config 設計上就是公開的），實際防護靠 Firestore 規則＋登入帳號。
+   到 Firebase Console → 專案設定 → 你的應用程式 複製後貼在下面。
+   ────────────────────────────────────────────────────────── */
+var FIREBASE_CONFIG = null;
+/* 範例：
+var FIREBASE_CONFIG = {
+  apiKey: "AIza...",
+  authDomain: "xxx.firebaseapp.com",
+  projectId: "xxx",
+  storageBucket: "xxx.firebasestorage.app",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxx"
+};
+*/
+
+var FB_SDK = [
+  'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js'
+];
+var GEMINI_MODEL = 'gemini-2.5-flash';
 
 var LS = {
-  items:    'ledger_items',
+  me:       'ledger_items_me',
+  shared:   'ledger_items_shared',
   settings: 'ledger_settings',
   thumbs:   'ledger_thumbs',
-  gemini:   'gemini_api_key',
-  fbConfig: 'ledger_fb_config'
+  book:     'ledger_book',
+  fbConfig: 'ledger_fb_config'   // 只在程式碼沒填 config 時當備援（管理員測試用）
 };
 
 var DEFAULT_SETTINGS = {
@@ -923,13 +1088,21 @@ var DEFAULT_SETTINGS = {
   foreignCode: 'JPY', foreignSym: '¥',
   rate: 0.215,
   cats: ['餐飲', '交通', '購物', '住宿', '娛樂', '伴手禮', '其他'],
-  pays: ['現金', '信用卡', '行動支付', '交通卡', '其他']
+  pays: ['現金', '信用卡', '行動支付', '交通卡', '其他'],
+  geminiKey: '',
+  members: []      // [{email, name}]
 };
 
-var S = null;              // 目前設定
-var _cache = { items: null, settings: null };   // Firebase 快取（登入後才有值）
+var S = null;                        // 目前設定
+var BOOKS = { me: [], shared: [] };  // 兩本帳的記錄
+var currentBook = 'me';
+var openGroups = {};
+var _firstRender = { me: true, shared: true };
 
-/* ── 工具 ── */
+/* ══════════════════════════════════════════════════════════
+   小工具
+   ══════════════════════════════════════════════════════════ */
+function noop() {}
 function escHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -954,8 +1127,7 @@ function symbolOf(code) {
 }
 function fmtMoney(amt, code) {
   var n = Math.round(amt || 0);
-  var sign = n < 0 ? '−' : '';
-  return sign + symbolOf(code) + Math.abs(n).toLocaleString();
+  return (n < 0 ? '−' : '') + symbolOf(code) + Math.abs(n).toLocaleString();
 }
 function toHome(item) {
   var amt = item.amt != null ? item.amt : 0;
@@ -963,24 +1135,51 @@ function toHome(item) {
   var r = (item.currency === S.foreignCode) ? S.rate : (item.rate || S.rate);
   return Math.round(amt * (r || 0));
 }
+function newId() { return String(Date.now()) + '-' + Math.random().toString(36).slice(2, 7); }
+function indexOfId(list, id) {
+  for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return i;
+  return -1;
+}
+
+/* ── 身分與成員 ── */
+function myEmail() { return (FB.authed && FB.email) ? FB.email : null; }
+function isAdmin() {
+  var e = myEmail();
+  return !!e && ADMIN_EMAILS.indexOf(e.toLowerCase()) >= 0;
+}
+function members() { return (S && Array.isArray(S.members)) ? S.members : []; }
+function memberName(email) {
+  if (!email) return '未指定';
+  var list = members();
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].email && list[i].email.toLowerCase() === String(email).toLowerCase()) {
+      return list[i].name || list[i].email.split('@')[0];
+    }
+  }
+  return String(email).split('@')[0];
+}
+function allMemberEmails() { return members().map(function(m){ return m.email; }).filter(Boolean); }
 
 /* ══════════════════════════════════════════════════════════
    設定
    ══════════════════════════════════════════════════════════ */
-function loadSettings() {
-  var raw = null;
-  if (_cache.settings) raw = _cache.settings;
-  else { try { raw = JSON.parse(localStorage.getItem(LS.settings) || 'null'); } catch(e) {} }
+function loadSettings(raw) {
+  if (!raw) { try { raw = JSON.parse(localStorage.getItem(LS.settings) || 'null'); } catch(e) {} }
   S = Object.assign({}, DEFAULT_SETTINGS, raw || {});
   if (!Array.isArray(S.cats) || !S.cats.length) S.cats = DEFAULT_SETTINGS.cats.slice();
   if (!Array.isArray(S.pays) || !S.pays.length) S.pays = DEFAULT_SETTINGS.pays.slice();
+  if (!Array.isArray(S.members)) S.members = [];
   S.rate = parseFloat(S.rate) || DEFAULT_SETTINGS.rate;
+  localStorage.setItem(LS.settings, JSON.stringify(S));
   return S;
 }
 function persistSettings() {
-  _cache.settings = S;
   localStorage.setItem(LS.settings, JSON.stringify(S));
-  if (fbCanSync()) fbPush('settings', S);
+  if (isAdmin() && FB.ready && FB.authed) {
+    FB.db.collection('config').doc('app').set(S).catch(function(e) {
+      alert('設定沒能存到雲端：' + (e.message || e));
+    });
+  }
 }
 function applySettings() {
   fillSelect('fCat', S.cats);
@@ -990,8 +1189,12 @@ function applySettings() {
   fillSelect('editCat', S.cats);
   fillSelect('editPay', S.pays);
   fillSelect('editCurrency', [S.foreignCode, S.homeCode]);
+  fillMemberSelect('fPayer');
+  fillMemberSelect('receiptPayer');
+  fillMemberSelect('editPayer');
   updateCurrencyButtons();
   updateCalcDisplay();
+  renderSplitChips('fSplit', _formSplit);
   refreshStoreList();
 }
 function fillSelect(id, arr) {
@@ -1001,69 +1204,185 @@ function fillSelect(id, arr) {
   el.innerHTML = arr.map(function(v){ return '<option value="' + escHtml(v) + '">' + escHtml(v) + '</option>'; }).join('');
   if (prev && arr.indexOf(prev) >= 0) el.value = prev;
 }
+function fillMemberSelect(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var prev = el.value;
+  var list = members();
+  el.innerHTML = list.length
+    ? list.map(function(m){ return '<option value="' + escHtml(m.email) + '">' + escHtml(m.name || m.email) + '</option>'; }).join('')
+    : '<option value="">（尚未設定成員）</option>';
+  var want = prev || myEmail();
+  if (want) {
+    for (var i = 0; i < el.options.length; i++) {
+      if (el.options[i].value.toLowerCase() === String(want).toLowerCase()) { el.selectedIndex = i; break; }
+    }
+  }
+}
+function parseMembers(txt) {
+  return String(txt || '').split('\n').map(function(line) {
+    var t = line.trim();
+    if (!t) return null;
+    var parts = t.split(/[,，\t]/);
+    var email = (parts[0] || '').trim();
+    if (!email || email.indexOf('@') < 0) return null;
+    return { email: email, name: (parts[1] || '').trim() || email.split('@')[0] };
+  }).filter(Boolean);
+}
 function renderSettingsForm() {
-  document.getElementById('setHomeCode').value    = S.homeCode;
-  document.getElementById('setHomeSym').value     = S.homeSym;
-  document.getElementById('setForeignCode').value = S.foreignCode;
-  document.getElementById('setForeignSym').value  = S.foreignSym;
-  document.getElementById('setRate').value        = S.rate;
+  var admin = isAdmin();
+  var v = function(id, val){ var el = document.getElementById(id); if (el) el.value = val; };
+  v('setHomeCode', S.homeCode); v('setHomeSym', S.homeSym);
+  v('setForeignCode', S.foreignCode); v('setForeignSym', S.foreignSym);
+  v('setRate', S.rate);
   document.getElementById('setRateUnit').textContent = S.homeCode + ' / 1 ' + S.foreignCode;
-  document.getElementById('setCats').value = S.cats.join(', ');
-  document.getElementById('setPays').value = S.pays.join(', ');
-  document.getElementById('setGeminiKey').value = '';
+  v('setCats', S.cats.join(', '));
+  v('setPays', S.pays.join(', '));
+  v('setMembers', members().map(function(m){ return m.email + ', ' + m.name; }).join('\n'));
+  v('setGeminiKey', '');
   document.getElementById('setGeminiKey').placeholder =
-    localStorage.getItem(LS.gemini) ? 'Key 已設定 ✓（重新輸入可覆蓋）' : '貼上 Gemini API Key';
-  document.getElementById('setFbConfig').value = localStorage.getItem(LS.fbConfig) || '';
+    S.geminiKey ? 'Key 已設定 ✓（重新輸入可覆蓋）' : '貼上 Gemini API Key';
+  var fbBox = document.getElementById('setFbConfig');
+  if (fbBox) fbBox.value = FIREBASE_CONFIG ? '（已寫在程式碼裡，由 repo 管理）' : (localStorage.getItem(LS.fbConfig) || '');
   document.getElementById('appVersion').textContent = APP_VERSION;
+
+  ['secCurrency','secCats','secAi','secCloud','secMembers'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('locked', !admin);
+  });
+  var note = document.getElementById('adminNote');
+  if (note) {
+    note.innerHTML = admin
+      ? '<div class="locked-note" style="background:rgba(95,125,99,0.14);color:var(--green);">🔑 你是管理員。這裡的設定改完會即時同步到所有人的 App。</div>'
+      : '<div class="locked-note">🔒 幣別、匯率、分類、成員名單與 API Key 由管理員統一設定，這裡只能檢視。</div>';
+  }
   renderFbAuthStatus();
 }
 function commitSettingsForm() {
-  var v = function(id){ return document.getElementById(id).value.trim(); };
-  var splitList = function(s) {
-    return s.split(/[,，、]/).map(function(x){ return x.trim(); }).filter(Boolean);
-  };
+  if (!isAdmin()) return;              // 非管理員不寫入
+  var v = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  var splitList = function(x) { return x.split(/[,，、]/).map(function(t){ return t.trim(); }).filter(Boolean); };
   S.homeCode    = v('setHomeCode') || DEFAULT_SETTINGS.homeCode;
   S.homeSym     = v('setHomeSym')  || S.homeCode;
   S.foreignCode = v('setForeignCode') || DEFAULT_SETTINGS.foreignCode;
   S.foreignSym  = v('setForeignSym')  || S.foreignCode;
   var r = parseFloat(v('setRate'));
-  S.rate = (!isNaN(r) && r > 0) ? r : S.rate;
-  var cats = splitList(v('setCats'));
-  var pays = splitList(v('setPays'));
+  if (!isNaN(r) && r > 0) S.rate = r;
+  var cats = splitList(v('setCats')), pays = splitList(v('setPays'));
   if (cats.length) S.cats = cats;
   if (pays.length) S.pays = pays;
+  S.members = parseMembers(v('setMembers'));
   persistSettings();
   applySettings();
-  renderSettingsForm();
   renderLedger();
 }
+function saveGeminiKey() {
+  if (!isAdmin()) { alert('只有管理員可以設定 API Key'); return; }
+  var el = document.getElementById('setGeminiKey');
+  var val = el.value.trim();
+  if (!val) return;
+  S.geminiKey = val;
+  persistSettings();
+  el.value = '';
+  el.placeholder = 'Key 已設定 ✓（重新輸入可覆蓋）';
+  alert('已儲存，所有成員的 App 會自動套用');
+}
+function geminiKey() { return (S && S.geminiKey) || ''; }
 
 /* ══════════════════════════════════════════════════════════
-   資料存取
+   兩本帳的資料存取
+   本機永遠先寫；登入後每一筆消費是 Firestore 的一份文件
+   （多人同時記帳不會互相覆蓋，也不受單文件 1MB 限制）
    ══════════════════════════════════════════════════════════ */
-function getItems() {
-  if (_cache.items !== null) return _cache.items;
-  try { return JSON.parse(localStorage.getItem(LS.items) || '[]'); } catch(e) { return []; }
+function itemsOf(book) { return BOOKS[book] || []; }
+function persistLocal(book) {
+  try { localStorage.setItem(LS[book], JSON.stringify(BOOKS[book])); }
+  catch(e) { alert('本機儲存空間已滿，請到設定匯出備份後清理舊資料。'); }
 }
-function saveItems(data) {
-  _cache.items = data;
-  try {
-    localStorage.setItem(LS.items, JSON.stringify(data));
-  } catch(e) {
-    alert('本機儲存空間已滿，請到設定匯出備份後清理舊資料。');
+function loadLocalBooks() {
+  ['me','shared'].forEach(function(b) {
+    try { BOOKS[b] = JSON.parse(localStorage.getItem(LS[b]) || '[]'); } catch(e) { BOOKS[b] = []; }
+    if (!Array.isArray(BOOKS[b])) BOOKS[b] = [];
+  });
+}
+function colFor(book) {
+  if (!FB.ready || !FB.authed) return null;
+  return book === 'shared'
+    ? FB.db.collection('shared_items')
+    : FB.db.collection('users').doc(FB.uid).collection('items');
+}
+function putItems(book, arr) {
+  var list = itemsOf(book);
+  arr.forEach(function(it) {
+    var i = indexOfId(list, it.id);
+    if (i >= 0) list[i] = it; else list.unshift(it);
+  });
+  persistLocal(book);
+  var col = colFor(book);
+  if (!col) return;
+  if (arr.length === 1) {
+    col.doc(String(arr[0].id)).set(arr[0]).catch(noop);
+  } else {
+    var batch = FB.db.batch();
+    arr.forEach(function(it){ batch.set(col.doc(String(it.id)), it); });
+    batch.commit().catch(noop);
   }
-  if (fbCanSync()) fbPush('items', data);
 }
-/* 收據縮圖只存本機（不進雲端，避免同步文件超過 Firestore 1MB 上限） */
-function getThumbs() {
-  try { return JSON.parse(localStorage.getItem(LS.thumbs) || '{}'); } catch(e) { return {}; }
+function dropItems(book, ids) {
+  BOOKS[book] = itemsOf(book).filter(function(it){ return ids.indexOf(String(it.id)) < 0; });
+  persistLocal(book);
+  ids.forEach(function(id){ setThumb(id, null); });
+  var col = colFor(book);
+  if (!col) return;
+  if (ids.length === 1) col.doc(ids[0]).delete().catch(noop);
+  else {
+    var batch = FB.db.batch();
+    ids.forEach(function(id){ batch.delete(col.doc(id)); });
+    batch.commit().catch(noop);
+  }
 }
+/* 收據縮圖只存本機，不進雲端 */
+function getThumbs() { try { return JSON.parse(localStorage.getItem(LS.thumbs) || '{}'); } catch(e) { return {}; } }
 function setThumb(id, dataUrl) {
   var t = getThumbs();
   if (dataUrl) t[id] = dataUrl; else delete t[id];
   try { localStorage.setItem(LS.thumbs, JSON.stringify(t)); } catch(e) {}
 }
 function getThumb(id) { return getThumbs()[id] || null; }
+
+/* ══════════════════════════════════════════════════════════
+   帳本切換
+   ══════════════════════════════════════════════════════════ */
+function switchBook(book) {
+  if (book === 'shared' && !(FB.ready && FB.authed)) {
+    alert('公帳需要登入才能使用。請到 ⚙️ 設定 → 雲端同步登入。');
+    openModal('settingsModal');
+    return;
+  }
+  currentBook = book;
+  localStorage.setItem(LS.book, book);
+  document.getElementById('tab-me').classList.toggle('active', book === 'me');
+  document.getElementById('tab-shared').classList.toggle('active', book === 'shared');
+  document.getElementById('sharedFields').style.display = (book === 'shared') ? 'block' : 'none';
+  document.getElementById('addPanelTitle').textContent =
+    book === 'shared' ? '✏️ 新增記帳（公帳）' : '✏️ 新增記帳（我的帳）';
+  document.getElementById('saveBtn').textContent =
+    book === 'shared' ? '＋ 記到公帳' : '＋ 記到我的帳';
+  var hint = document.getElementById('bookHint');
+  if (book === 'shared' && !members().length) {
+    hint.style.display = 'block';
+    hint.innerHTML = '還沒有設定同行成員，公帳可以記帳但算不了分攤。' +
+      (isAdmin() ? '請到 ⚙️ 設定 → 同行成員 加入大家的 Email。' : '請管理員到設定裡加入成員名單。');
+  } else if (book === 'shared') {
+    hint.style.display = 'block';
+    hint.innerHTML = '記到公帳的項目所有成員都看得到，會列入分攤結算。';
+  } else {
+    hint.style.display = 'block';
+    hint.innerHTML = '記到我的帳的項目<b>只有你自己看得到</b>，不會列入公帳分攤。';
+  }
+  renderSplitChips('fSplit', _formSplit);
+  renderLedger();
+}
 
 /* ══════════════════════════════════════════════════════════
    UI 基本操作
@@ -1087,25 +1406,59 @@ function openLightbox(src) {
 function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
 
 /* ══════════════════════════════════════════════════════════
+   分攤 chips
+   ══════════════════════════════════════════════════════════ */
+var _formSplit = null;      // null = 全員
+var _receiptSplit = null;
+var _editSplit = null;
+
+function splitOrAll(sel) {
+  var all = allMemberEmails();
+  if (!sel || !sel.length) return all;
+  return sel.filter(function(e){ return all.indexOf(e) >= 0 || true; });
+}
+function renderSplitChips(elId, selected) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var list = members();
+  if (!list.length) { el.innerHTML = '<span class="chips-empty">尚未設定成員</span>'; return; }
+  var sel = selected && selected.length ? selected : allMemberEmails();
+  el.innerHTML = list.map(function(m) {
+    var on = sel.indexOf(m.email) >= 0;
+    return '<button type="button" class="chip' + (on ? ' on' : '') + '"'
+      + ' data-split="' + elId + '" data-email="' + escHtml(m.email) + '">'
+      + escHtml(m.name || m.email) + '</button>';
+  }).join('');
+}
+document.addEventListener('click', function(e) {
+  var chip = e.target.closest ? e.target.closest('.chip[data-split]') : null;
+  if (!chip) return;
+  var which = chip.getAttribute('data-split');
+  var email = chip.getAttribute('data-email');
+  var ref = which === 'fSplit' ? '_formSplit' : (which === 'receiptSplit' ? '_receiptSplit' : '_editSplit');
+  var cur = (window[ref] && window[ref].length) ? window[ref].slice() : allMemberEmails();
+  var i = cur.indexOf(email);
+  if (i >= 0) { if (cur.length > 1) cur.splice(i, 1); } else { cur.push(email); }
+  window[ref] = cur;
+  renderSplitChips(which, cur);
+  if (which === 'receiptSplit') updateReceiptSaveBtn();
+});
+
+/* ══════════════════════════════════════════════════════════
    新增記帳
    ══════════════════════════════════════════════════════════ */
-var _formCurrency = null;   // 目前選的幣別代碼
-var _formTax = null;        // null=未設定 / false=含稅 / true=免稅
+var _formCurrency = null;
+var _formTax = null;
 var _pendingThumb = null;
 
 function updateCurrencyButtons() {
-  if (!_formCurrency || (_formCurrency !== S.homeCode && _formCurrency !== S.foreignCode)) {
-    _formCurrency = S.foreignCode;
-  }
+  if (!_formCurrency || (_formCurrency !== S.homeCode && _formCurrency !== S.foreignCode)) _formCurrency = S.foreignCode;
   var btn = document.getElementById('fCurBtn');
-  var isHome = _formCurrency === S.homeCode;
   btn.textContent = symbolOf(_formCurrency).trim() + ' ' + _formCurrency;
-  btn.classList.toggle('home', isHome);
+  btn.classList.toggle('home', _formCurrency === S.homeCode);
   document.getElementById('fAmt').placeholder = '單價（' + _formCurrency + '）';
 
-  if (!_receiptCurrency || (_receiptCurrency !== S.homeCode && _receiptCurrency !== S.foreignCode)) {
-    _receiptCurrency = S.foreignCode;
-  }
+  if (!_receiptCurrency || (_receiptCurrency !== S.homeCode && _receiptCurrency !== S.foreignCode)) _receiptCurrency = S.foreignCode;
   var rbtn = document.getElementById('receiptCurBtn');
   if (rbtn) {
     rbtn.textContent = symbolOf(_receiptCurrency).trim() + ' ' + _receiptCurrency;
@@ -1117,7 +1470,7 @@ function toggleFormCurrency() {
   updateCurrencyButtons();
 }
 function setTaxBtn(btn, state) {
-  if (state === null)      { btn.textContent = '稅制'; btn.className = 'tax-btn'; }
+  if (state === null)       { btn.textContent = '稅制'; btn.className = 'tax-btn'; }
   else if (state === false) { btn.textContent = '含稅'; btn.className = 'tax-btn tax-inc'; }
   else                      { btn.textContent = '免稅'; btn.className = 'tax-btn tax-free'; }
 }
@@ -1126,7 +1479,6 @@ function toggleFormTax() {
   _formTax = nextTax(_formTax);
   setTaxBtn(document.getElementById('fTaxBtn'), _formTax);
 }
-function newId() { return String(Date.now()) + '-' + Math.random().toString(36).slice(2, 7); }
 
 function addEntry() {
   var name  = document.getElementById('fName').value.trim();
@@ -1134,28 +1486,26 @@ function addEntry() {
   var unit  = parseFloat(document.getElementById('fAmt').value);
   var qty   = parseInt(document.getElementById('fQty').value, 10) || 1;
   var date  = document.getElementById('fDate').value || todayStr();
-  if (!name)             { alert('請填寫品項名稱'); return; }
+  if (!name) { alert('請填寫品項名稱'); return; }
   if (isNaN(unit) || unit === 0) { alert('請填寫單價'); return; }
 
   var entry = {
-    id: newId(),
-    name: name,
-    store: store,
-    date: date,
+    id: newId(), name: name, store: store, date: date,
     cat: document.getElementById('fCat').value,
     pay: document.getElementById('fPay').value,
-    currency: _formCurrency,
-    unitPrice: unit,
-    qty: qty,
+    currency: _formCurrency, unitPrice: unit, qty: qty,
     amt: Math.round(unit * qty)
   };
   if (_formCurrency !== S.homeCode) entry.rate = S.rate;
   if (_formTax !== null) entry.isTaxFree = _formTax;
-
-  var data = getItems();
-  data.unshift(entry);
+  if (currentBook === 'shared') {
+    entry.by = myEmail() || '';
+    entry.payer = document.getElementById('fPayer').value || entry.by;
+    entry.split = (_formSplit && _formSplit.length) ? _formSplit.slice() : allMemberEmails();
+  }
   if (_pendingThumb) { setThumb(entry.id, _pendingThumb); entry.thumb = true; }
-  saveItems(data);
+
+  putItems(currentBook, [entry]);
 
   document.getElementById('fName').value = '';
   document.getElementById('fAmt').value = '';
@@ -1166,7 +1516,7 @@ function addEntry() {
   document.getElementById('photoInput').value = '';
   _formTax = null;
   setTaxBtn(document.getElementById('fTaxBtn'), null);
-  openGroups['d-' + date] = true;
+  openGroups[currentBook + '-d-' + date] = true;
   renderLedger();
 }
 
@@ -1176,8 +1526,7 @@ function handlePhoto(e) {
   shrinkImage(file, 320, 0.72, function(dataUrl) {
     _pendingThumb = dataUrl;
     var prev = document.getElementById('thumbPreview');
-    prev.src = dataUrl;
-    prev.style.display = 'block';
+    prev.src = dataUrl; prev.style.display = 'block';
   });
 }
 function shrinkImage(file, max, quality, cb) {
@@ -1201,44 +1550,42 @@ function shrinkImage(file, max, quality, cb) {
 /* ══════════════════════════════════════════════════════════
    記錄列表
    ══════════════════════════════════════════════════════════ */
-var openGroups = {};        // 展開中的群組 id
-var _firstRender = true;
-
-function storeKeyOf(item) {
-  return (item.store && item.store.trim()) ? item.store.trim() : '其他';
-}
+function storeKeyOf(item) { return (item.store && item.store.trim()) ? item.store.trim() : '其他'; }
 function refreshStoreList() {
   var seen = {}, out = [];
-  getItems().forEach(function(i) {
+  itemsOf(currentBook).forEach(function(i) {
     var s = (i.store || '').trim();
     if (s && !seen[s]) { seen[s] = 1; out.push(s); }
   });
-  document.getElementById('storeList').innerHTML =
-    out.slice(0, 40).map(function(s){ return '<option value="' + escHtml(s) + '">'; }).join('');
+  var el = document.getElementById('storeList');
+  if (el) el.innerHTML = out.slice(0, 40).map(function(s){ return '<option value="' + escHtml(s) + '">'; }).join('');
 }
 function taxBadge(state) {
   if (state === true)  return '<span class="badge free">免稅</span>';
   if (state === false) return '<span class="badge inc">含稅</span>';
   return '';
 }
+function bookTotal(book) { return itemsOf(book).reduce(function(s, i){ return s + toHome(i); }, 0); }
 
 function renderLedger() {
-  var data = getItems();
+  var data = itemsOf(currentBook);
   var thumbs = getThumbs();
-  var total = data.reduce(function(s, i){ return s + toHome(i); }, 0);
+  var total = bookTotal(currentBook);
 
   document.getElementById('grandTotal').textContent = fmtMoney(total, S.homeCode);
-  document.getElementById('grandTotalSub').textContent = '共 ' + data.length + ' 筆';
+  document.getElementById('grandTotalSub').textContent =
+    (currentBook === 'shared' ? '公帳 ' : '我的帳 ') + data.length + ' 筆';
   document.getElementById('listTotal').textContent = data.length ? fmtMoney(total, S.homeCode) : '';
+  document.getElementById('sum-me').textContent     = itemsOf('me').length ? ' ' + fmtMoney(bookTotal('me'), S.homeCode) : '';
+  document.getElementById('sum-shared').textContent = itemsOf('shared').length ? ' ' + fmtMoney(bookTotal('shared'), S.homeCode) : '';
 
   if (!data.length) {
     document.getElementById('ledgerList').innerHTML =
-      '<div class="ledger-empty">還沒有記帳項目<br>用上面的表單或「掃描收據」開始吧</div>';
+      '<div class="ledger-empty">' + (currentBook === 'shared' ? '公帳' : '我的帳') + '還沒有項目<br>用上面的表單或「掃描收據」開始吧</div>';
     refreshStoreList();
     return;
   }
 
-  /* 第一層：日期（新到舊） */
   var byDate = {}, dates = [];
   data.forEach(function(i) {
     var d = i.date || '未分類';
@@ -1246,28 +1593,22 @@ function renderLedger() {
     byDate[d].push(i);
   });
   dates.sort(function(a, b){ return a < b ? 1 : (a > b ? -1 : 0); });
-  if (_firstRender) { openGroups['d-' + dates[0]] = true; _firstRender = false; }
+  if (_firstRender[currentBook]) { openGroups[currentBook + '-d-' + dates[0]] = true; _firstRender[currentBook] = false; }
 
   var html = '';
   dates.forEach(function(date) {
-    var items = byDate[date].slice().sort(function(a, b){
-      return String(a.id).localeCompare(String(b.id));
-    });
+    var items = byDate[date].slice().sort(function(a, b){ return String(a.id).localeCompare(String(b.id)); });
     var dayTotal = items.reduce(function(s, i){ return s + toHome(i); }, 0);
-    var gid = 'd-' + date;
+    var gid = currentBook + '-d-' + date;
     var open = !!openGroups[gid];
 
     html += '<div class="date-group' + (open ? '' : ' collapsed') + '" id="' + escHtml(gid) + '">'
       + '<div class="date-hd" data-act="grp" data-gid="' + escHtml(gid) + '">'
       +   '<span class="date-label">' + escHtml(dateLabel(date)) + '</span>'
-      +   '<span class="date-right">'
-      +     '<span class="date-sub">' + fmtMoney(dayTotal, S.homeCode) + '</span>'
-      +     '<span class="grp-arrow">▼</span>'
-      +   '</span>'
-      + '</div>'
-      + '<div class="date-items">';
+      +   '<span class="date-right"><span class="date-sub">' + fmtMoney(dayTotal, S.homeCode) + '</span>'
+      +   '<span class="grp-arrow">▼</span></span>'
+      + '</div><div class="date-items">';
 
-    /* 第二層：店家 */
     var byStore = {}, stores = [];
     items.forEach(function(i) {
       var k = storeKeyOf(i);
@@ -1279,7 +1620,7 @@ function renderLedger() {
       var sItems = byStore[store];
       var sTotal = sItems.reduce(function(s, i){ return s + toHome(i); }, 0);
       var sgid = gid + '-s' + si;
-      var sOpen = openGroups[sgid] !== false;   // 店家層預設展開
+      var sOpen = openGroups[sgid] !== false;
 
       var allFree = sItems.every(function(i){ return i.isTaxFree === true; });
       var allInc  = sItems.every(function(i){ return i.isTaxFree === false; });
@@ -1291,37 +1632,37 @@ function renderLedger() {
       html += '<div class="store-group' + (sOpen ? '' : ' collapsed') + '" id="' + escHtml(sgid) + '">'
         + '<div class="store-hd" data-act="grp" data-gid="' + escHtml(sgid) + '">'
         +   '<span class="store-name editable" data-act="editstore" data-date="' + escHtml(date) + '" data-store="' + escHtml(store) + '">'
-        +     '🏪 ' + escHtml(store) + sBadge
-        +   '</span>'
-        +   '<span class="store-right">'
-        +     '<span class="store-sub">' + fmtMoney(sTotal, S.homeCode) + '</span>'
+        +     '🏪 ' + escHtml(store) + sBadge + '</span>'
+        +   '<span class="store-right"><span class="store-sub">' + fmtMoney(sTotal, S.homeCode) + '</span>'
         +     '<button class="del-btn" data-act="delstore" data-date="' + escHtml(date) + '" data-store="' + escHtml(store) + '" title="刪除整間店">🗑</button>'
-        +     '<span class="grp-arrow">▼</span>'
-        +   '</span>'
-        + '</div>'
-        + '<div class="store-items">';
+        +     '<span class="grp-arrow">▼</span></span>'
+        + '</div><div class="store-items">';
 
       sItems.forEach(function(item) {
         var isHome = !item.currency || item.currency === S.homeCode;
         var homeAmt = toHome(item);
-        var mainStr = fmtMoney(item.amt, item.currency || S.homeCode);
-        var subStr  = isHome ? '' : ('≈ ' + fmtMoney(homeAmt, S.homeCode));
         var neg = (item.amt || 0) < 0;
+        var shareTag = '';
+        if (currentBook === 'shared') {
+          var sp = (item.split && item.split.length) ? item.split : allMemberEmails();
+          shareTag = '<span class="tag who">' + escHtml(memberName(item.payer || item.by)) + ' 付</span>'
+            + (sp.length ? '<span class="tag">分攤 ' + sp.length + ' 人</span>' : '');
+        }
 
         html += '<div class="item-row">'
           + '<div style="min-width:0;">'
           +   '<div class="item-name editable" data-act="editname" data-id="' + escHtml(item.id) + '">'
-          +     escHtml(item.name) + taxBadge(item.isTaxFree)
-          +   '</div>'
+          +     escHtml(item.name) + taxBadge(item.isTaxFree) + '</div>'
           +   '<div class="item-meta">'
           +     (item.qty > 1 ? '<span class="tag qty">×' + item.qty + ' @ ' + fmtMoney(item.unitPrice, item.currency) + '</span>' : '')
           +     (item.cat ? '<span class="tag">' + escHtml(item.cat) + '</span>' : '')
           +     (item.pay ? '<span class="tag pay">' + escHtml(item.pay) + '</span>' : '')
+          +     shareTag
           +   '</div>'
           + '</div>'
           + '<div class="item-amt" data-act="edititem" data-id="' + escHtml(item.id) + '" title="點擊修改">'
-          +   '<div class="amt-main' + (neg ? ' neg' : '') + '">' + mainStr + '</div>'
-          +   (subStr ? '<div class="amt-sub' + (neg ? ' neg' : '') + '">' + subStr + '</div>' : '')
+          +   '<div class="amt-main' + (neg ? ' neg' : '') + '">' + fmtMoney(item.amt, item.currency || S.homeCode) + '</div>'
+          +   (isHome ? '' : '<div class="amt-sub' + (neg ? ' neg' : '') + '">≈ ' + fmtMoney(homeAmt, S.homeCode) + '</div>')
           + '</div>'
           + '<button class="del-btn" data-act="delitem" data-id="' + escHtml(item.id) + '">✕</button>';
         if (thumbs[item.id]) {
@@ -1329,10 +1670,8 @@ function renderLedger() {
         }
         html += '</div>';
       });
-
       html += '</div></div>';
     });
-
     html += '</div></div>';
   });
 
@@ -1340,18 +1679,15 @@ function renderLedger() {
   refreshStoreList();
 }
 
-/* 事件委派：避免把店名／品名塞進 inline onclick 造成引號問題 */
 document.getElementById('ledgerList').addEventListener('click', function(e) {
   var el = e.target.closest('[data-act]');
   if (!el) return;
   var act = el.getAttribute('data-act');
-
   if (act === 'grp') {
     var gid = el.getAttribute('data-gid');
     var box = document.getElementById(gid);
     if (!box) return;
-    var nowCollapsed = box.classList.toggle('collapsed');
-    openGroups[gid] = !nowCollapsed;
+    openGroups[gid] = !box.classList.toggle('collapsed');
   }
   else if (act === 'delitem')   delItem(el.getAttribute('data-id'));
   else if (act === 'delstore')  delStore(el.getAttribute('data-date'), el.getAttribute('data-store'));
@@ -1361,25 +1697,20 @@ document.getElementById('ledgerList').addEventListener('click', function(e) {
   else if (act === 'thumb')     openLightbox(getThumb(el.getAttribute('data-id')));
 });
 
-function delItem(id) {
-  var data = getItems().filter(function(i){ return String(i.id) !== String(id); });
-  setThumb(id, null);
-  saveItems(data);
-  renderLedger();
-}
+function delItem(id) { dropItems(currentBook, [String(id)]); renderLedger(); }
 function delStore(date, store) {
   if (!confirm('確定要刪除「' + store + '」在 ' + dateLabel(date) + ' 的所有記錄嗎？')) return;
-  var removed = [];
-  var data = getItems().filter(function(i) {
-    var hit = (i.date === date && storeKeyOf(i) === store);
-    if (hit) removed.push(i.id);
-    return !hit;
-  });
-  removed.forEach(function(id){ setThumb(id, null); });
-  saveItems(data);
+  var ids = itemsOf(currentBook).filter(function(i) {
+    return i.date === date && storeKeyOf(i) === store;
+  }).map(function(i){ return String(i.id); });
+  dropItems(currentBook, ids);
   renderLedger();
 }
-
+function findItem(id) {
+  var list = itemsOf(currentBook);
+  var i = indexOfId(list, id);
+  return i >= 0 ? list[i] : null;
+}
 function inlineEditName(el, id) {
   var orig = el.textContent.trim();
   el.innerHTML = '<input class="inline-input" style="width:100%;">';
@@ -1389,13 +1720,8 @@ function inlineEditName(el, id) {
   function save() {
     if (done) return; done = true;
     var v = inp.value.trim() || orig;
-    if (v !== orig) {
-      var data = getItems();
-      for (var i = 0; i < data.length; i++) {
-        if (String(data[i].id) === String(id)) { data[i].name = v; break; }
-      }
-      saveItems(data);
-    }
+    var item = findItem(id);
+    if (item && v !== orig) { item.name = v; putItems(currentBook, [item]); }
     renderLedger();
   }
   inp.addEventListener('blur', save);
@@ -1413,13 +1739,11 @@ function inlineEditStore(el, date, origStore) {
     if (done) return; done = true;
     var v = inp.value.trim() || origStore;
     if (v !== origStore) {
-      var data = getItems();
-      data.forEach(function(item) {
-        if (item.date === date && storeKeyOf(item) === origStore) {
-          item.store = (v === '其他') ? '' : v;
-        }
+      var changed = itemsOf(currentBook).filter(function(item) {
+        return item.date === date && storeKeyOf(item) === origStore;
       });
-      saveItems(data);
+      changed.forEach(function(item){ item.store = (v === '其他') ? '' : v; });
+      if (changed.length) putItems(currentBook, changed);
     }
     renderLedger();
   }
@@ -1431,16 +1755,13 @@ function inlineEditStore(el, date, origStore) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   項目編輯面板
+   項目編輯
    ══════════════════════════════════════════════════════════ */
 var _editingId = null;
 var _editTax = null;
 
 function openItemEdit(id) {
-  var item = null, data = getItems();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i].id) === String(id)) { item = data[i]; break; }
-  }
+  var item = findItem(id);
   if (!item) return;
   _editingId = id;
   _editTax = item.isTaxFree !== undefined ? item.isTaxFree : null;
@@ -1463,6 +1784,21 @@ function openItemEdit(id) {
   setSelectValue('editCat', item.cat, S.cats);
   setSelectValue('editPay', item.pay, S.pays);
   setTaxBtn(document.getElementById('editTaxBtn'), _editTax);
+
+  var sharedBox = document.getElementById('editSharedFields');
+  if (currentBook === 'shared') {
+    sharedBox.style.display = 'block';
+    fillMemberSelect('editPayer');
+    var payer = item.payer || item.by || myEmail();
+    var ps = document.getElementById('editPayer');
+    for (var i = 0; i < ps.options.length; i++) {
+      if (ps.options[i].value.toLowerCase() === String(payer || '').toLowerCase()) { ps.selectedIndex = i; break; }
+    }
+    _editSplit = (item.split && item.split.length) ? item.split.slice() : allMemberEmails();
+    renderSplitChips('editSplit', _editSplit);
+  } else {
+    sharedBox.style.display = 'none';
+  }
 
   document.getElementById('editOverlay').classList.add('open');
   document.getElementById('editSheet').classList.add('open');
@@ -1493,25 +1829,23 @@ function saveItemEdit() {
   var unit = parseFloat(document.getElementById('editUnitPrice').value);
   var qty  = parseInt(document.getElementById('editQty').value, 10) || 1;
   if (isNaN(unit)) { alert('請輸入正確金額'); return; }
-
-  var data = getItems();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i].id) === String(_editingId)) {
-      var it = data[i];
-      it.unitPrice = unit;
-      it.qty = qty;
-      it.amt = Math.round(unit * qty);
-      it.currency = document.getElementById('editCurrency').value;
-      it.cat  = document.getElementById('editCat').value;
-      it.pay  = document.getElementById('editPay').value;
-      it.date = document.getElementById('editDate').value || it.date;
-      if (it.currency !== S.homeCode && !it.rate) it.rate = S.rate;
-      if (_editTax !== null) it.isTaxFree = _editTax; else delete it.isTaxFree;
-      openGroups['d-' + it.date] = true;
-      break;
-    }
+  var it = findItem(_editingId);
+  if (!it) return;
+  it.unitPrice = unit;
+  it.qty = qty;
+  it.amt = Math.round(unit * qty);
+  it.currency = document.getElementById('editCurrency').value;
+  it.cat  = document.getElementById('editCat').value;
+  it.pay  = document.getElementById('editPay').value;
+  it.date = document.getElementById('editDate').value || it.date;
+  if (it.currency !== S.homeCode && !it.rate) it.rate = S.rate;
+  if (_editTax !== null) it.isTaxFree = _editTax; else delete it.isTaxFree;
+  if (currentBook === 'shared') {
+    it.payer = document.getElementById('editPayer').value || it.payer;
+    it.split = (_editSplit && _editSplit.length) ? _editSplit.slice() : allMemberEmails();
   }
-  saveItems(data);
+  openGroups[currentBook + '-d-' + it.date] = true;
+  putItems(currentBook, [it]);
   closeItemEdit();
   renderLedger();
 }
@@ -1544,8 +1878,7 @@ function calcEqual() {
 function paintCalcResult(v) {
   var cur = _formCurrency || S.foreignCode;
   document.getElementById('calcResult').textContent = fmtMoney(v, cur);
-  document.getElementById('calcConv').textContent =
-    (cur === S.homeCode) ? '' : ('≈ ' + fmtMoney(v * S.rate, S.homeCode));
+  document.getElementById('calcConv').textContent = (cur === S.homeCode) ? '' : ('≈ ' + fmtMoney(v * S.rate, S.homeCode));
 }
 function updateCalcDisplay() {
   document.getElementById('calcExpr').textContent = _expr || '—';
@@ -1563,55 +1896,61 @@ function useCalcAmount() {
 /* ══════════════════════════════════════════════════════════
    AI 收據辨識（Google Gemini）
    ══════════════════════════════════════════════════════════ */
-var GEMINI_MODEL = 'gemini-2.5-flash';
 var _receiptItems = [];
 var _receiptStore = '';
 var _receiptTax = null;
 var _receiptCurrency = null;
 var _receiptThumb = null;
+var _receiptBook = 'me';
 
-function saveGeminiKey() {
-  var el = document.getElementById('setGeminiKey');
-  var v = el.value.trim();
-  if (!v) return;
-  localStorage.setItem(LS.gemini, v);
-  el.value = '';
-  el.placeholder = 'Key 已設定 ✓（重新輸入可覆蓋）';
-  alert('Gemini API Key 已儲存');
+function toggleReceiptBook() {
+  if (_receiptBook === 'me') {
+    if (!(FB.ready && FB.authed)) { alert('公帳需要登入才能使用'); return; }
+    _receiptBook = 'shared';
+  } else {
+    _receiptBook = 'me';
+  }
+  paintReceiptBookBtn();
 }
-
-function toggleReceiptCurrency() {
-  _receiptCurrency = (_receiptCurrency === S.foreignCode) ? S.homeCode : S.foreignCode;
-  updateCurrencyButtons();
-  document.getElementById('receiptItemList').innerHTML = receiptRows();
+function paintReceiptBookBtn() {
+  var btn = document.getElementById('receiptBookBtn');
+  if (!btn) return;
+  btn.textContent = _receiptBook === 'shared' ? '👥 公帳' : '👤 我的帳';
+  btn.classList.toggle('home', _receiptBook === 'shared');
+  document.getElementById('receiptShared').style.display = _receiptBook === 'shared' ? 'block' : 'none';
+  if (_receiptBook === 'shared') {
+    fillMemberSelect('receiptPayer');
+    renderSplitChips('receiptSplit', _receiptSplit);
+  }
+  updateReceiptSaveBtn();
 }
 
 function handleReceiptScan(event) {
   var file = event.target.files[0];
   if (!file) return;
   event.target.value = '';
-  var apiKey = localStorage.getItem(LS.gemini);
-  if (!apiKey) {
-    alert('請先到「設定 ⚙️ → AI 收據辨識」貼上 Gemini API Key');
-    openModal('settingsModal');
+  if (!geminiKey()) {
+    alert(isAdmin()
+      ? '請先到「設定 ⚙️ → AI 收據辨識」貼上 Gemini API Key'
+      : '管理員還沒設定 Gemini API Key，暫時無法使用收據辨識');
+    if (isAdmin()) openModal('settingsModal');
     return;
   }
   _receiptCurrency = S.foreignCode;
+  _receiptBook = currentBook;
+  _receiptSplit = null;
   updateCurrencyButtons();
 
   document.getElementById('receiptOverlay').classList.add('open');
   document.getElementById('receiptFooter').style.display = 'none';
   document.getElementById('receiptBody').innerHTML =
-    '<div class="receipt-loading">'
-    + '<div class="spinner"></div>'
+    '<div class="receipt-loading"><div class="spinner"></div>'
     + '<div class="loading-txt">AI 正在辨識收據…</div>'
-    + '<div class="loading-sub">請稍候，通常需要幾秒鐘</div>'
-    + '</div>';
+    + '<div class="loading-sub">請稍候，通常需要幾秒鐘</div></div>';
 
-  /* 縮圖留著當附圖；原圖（壓到 1280px）送去辨識 */
   shrinkImage(file, 320, 0.7, function(thumb) { _receiptThumb = thumb; });
   shrinkImage(file, 1280, 0.85, function(dataUrl) {
-    callGemini(apiKey, dataUrl.split(',')[1], 'image/jpeg', dataUrl);
+    callGemini(geminiKey(), dataUrl.split(',')[1], 'image/jpeg', dataUrl);
   });
 }
 
@@ -1643,10 +1982,7 @@ function callGemini(apiKey, base64, mime, previewUrl) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [
-        { text: receiptPrompt() },
-        { inlineData: { mimeType: mime, data: base64 } }
-      ]}],
+      contents: [{ parts: [ { text: receiptPrompt() }, { inlineData: { mimeType: mime, data: base64 } } ]}],
       generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }
     })
   })
@@ -1664,47 +2000,36 @@ function callGemini(apiKey, base64, mime, previewUrl) {
       '<div class="receipt-loading"><div style="font-size:2rem;">⚠️</div>'
       + '<div class="loading-txt">辨識失敗</div>'
       + '<div class="loading-sub">' + escHtml(err.message || '未知錯誤') + '</div>'
-      + '<button class="set-btn" style="margin-top:0.8rem;" onclick="closeReceipt()">關閉</button>'
-      + '</div>';
+      + '<button class="set-btn" style="margin-top:0.8rem;" onclick="closeReceipt()">關閉</button></div>';
   });
 }
-
 function parseGeminiJson(text) {
   text = String(text).replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
   var m = text.match(/\{[\s\S]*\}/);
   if (m) text = m[0];
   try { return JSON.parse(text); } catch(e) {}
-  /* 被截斷時：丟掉不完整的最後一筆，補回缺少的括號 */
   var fixed = text.replace(/,\s*\{[^}]*$/, '');
   var pad = '';
-  var need = function(open, close) {
-    return (fixed.match(open) || []).length - (fixed.match(close) || []).length;
-  };
+  var need = function(open, close) { return (fixed.match(open) || []).length - (fixed.match(close) || []).length; };
   for (var i = 0; i < need(/\[/g, /\]/g); i++) pad += ']';
   for (var j = 0; j < need(/\{/g, /\}/g); j++) pad += '}';
   try { return JSON.parse(fixed + pad); }
   catch(e2) { throw new Error('JSON 解析失敗，AI 回傳內容：' + text.slice(0, 200)); }
 }
-
 function applyReceiptResult(parsed, previewUrl) {
   var skip = /taxfree\s*fee|免税手数料|免稅手續費|消費税|内消費税|稅額|小計|合計|総計|支払|お預り|找零|total|change/i;
   _receiptItems = (parsed.items || []).filter(function(it) {
-    if (!it || !it.name) return false;
-    if (skip.test(it.name)) return false;
-    return true;
+    return it && it.name && !skip.test(it.name);
   }).map(function(it) {
     var qty = parseInt(it.qty, 10) || 1;
     var unit = parseFloat(it.unit_price != null ? it.unit_price : it.amount) || 0;
     return { name: String(it.name), qty: qty, unit_price: unit, amount: Math.round(qty * unit) };
   });
-
-  /* 比例校正：品項加總與 total 差超過 1% 時，按比例調整 */
   var total = parseFloat(parsed.total);
   if (!isNaN(total) && total > 0 && _receiptItems.length) {
     var sum = _receiptItems.reduce(function(s, it){ return s + it.amount; }, 0);
     var isFree = !!parsed.is_tax_free;
-    var needScale = sum > 0 && Math.abs(sum - total) / total > 0.01 && (!isFree || sum > total);
-    if (needScale) {
+    if (sum > 0 && Math.abs(sum - total) / total > 0.01 && (!isFree || sum > total)) {
       var scale = total / sum;
       _receiptItems.forEach(function(it) {
         it.amount = Math.round(it.amount * scale);
@@ -1712,16 +2037,11 @@ function applyReceiptResult(parsed, previewUrl) {
       });
     }
   }
-
-  /* 幣別 */
   var cur = (parsed.currency || '').toUpperCase();
   if (cur && (cur === S.homeCode || cur === S.foreignCode)) _receiptCurrency = cur;
   updateCurrencyButtons();
-
-  /* 日期 */
-  var dateEl = document.getElementById('receiptDate');
-  dateEl.value = /^\d{4}-\d{2}-\d{2}$/.test(parsed.date || '') ? parsed.date : todayStr();
-
+  document.getElementById('receiptDate').value =
+    /^\d{4}-\d{2}-\d{2}$/.test(parsed.date || '') ? parsed.date : todayStr();
   _receiptTax = {
     isTaxFree: !!parsed.is_tax_free,
     rateType: parsed.tax_rate_type || '不明',
@@ -1730,7 +2050,6 @@ function applyReceiptResult(parsed, previewUrl) {
   };
   renderReceiptConfirm(parsed.store && parsed.store !== 'unknown' ? parsed.store : '', previewUrl);
 }
-
 function renderReceiptConfirm(storeName, previewUrl) {
   _receiptStore = storeName || '';
   var t = _receiptTax || {};
@@ -1743,23 +2062,21 @@ function renderReceiptConfirm(storeName, previewUrl) {
   var html = '<div class="receipt-store-card">'
     + (previewUrl ? '<img src="' + previewUrl + '" alt="收據" onclick="openLightbox(this.src)">' : '')
     + '<div style="flex:1;min-width:0;">'
-    +   '<input class="receipt-store-name" id="receiptStoreInput" value="' + escHtml(_receiptStore) + '" placeholder="店名" oninput="_receiptStore=this.value">'
+    +   '<input class="receipt-store-name" value="' + escHtml(_receiptStore) + '" placeholder="店名" oninput="_receiptStore=this.value">'
     +   '<div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.35rem;">' + badge + '</div>'
-    + '</div></div>';
-
-  html += '<div class="receipt-items-wrap">'
+    + '</div></div>'
+    + '<div class="receipt-items-wrap">'
     + '<div class="receipt-items-hd"><span class="receipt-items-label">購買明細</span>'
     + '<button class="receipt-add" onclick="addReceiptRow()">＋ 新增品項</button></div>'
     + '<div id="receiptItemList">' + receiptRows() + '</div></div>';
 
   document.getElementById('receiptBody').innerHTML = html;
   document.getElementById('receiptFooter').style.display = 'block';
-  updateReceiptSaveBtn();
+  paintReceiptBookBtn();
 }
-
 function receiptRows() {
   if (!_receiptItems.length) {
-    return '<div style="padding:1rem;text-align:center;color:rgba(87,111,114,0.45);font-size:0.8rem;">沒有辨識到品項，可手動新增</div>';
+    return '<div style="padding:1rem;text-align:center;color:var(--ink-2);font-size:0.8rem;">沒有辨識到品項，可手動新增</div>';
   }
   var sym = symbolOf(_receiptCurrency);
   return _receiptItems.map(function(it, i) {
@@ -1767,10 +2084,9 @@ function receiptRows() {
       + '<div class="receipt-num">' + (i+1) + '</div>'
       + '<input class="receipt-name" value="' + escHtml(it.name) + '" oninput="_receiptItems[' + i + '].name=this.value">'
       + '<button class="del-btn" onclick="delReceiptRow(' + i + ')">🗑</button>'
-      + '<div class="receipt-sub">'
-      +   '<span style="font-size:0.75rem;color:rgba(87,111,114,0.6);">×</span>'
+      + '<div class="receipt-sub"><span style="font-size:0.75rem;color:var(--ink-2);">×</span>'
       +   '<input class="receipt-qty" type="number" min="1" value="' + it.qty + '" oninput="updateReceiptRow(' + i + ',null,this.value)">'
-      +   '<span style="font-size:0.75rem;color:rgba(87,111,114,0.6);">@ ' + escHtml(sym) + '</span>'
+      +   '<span style="font-size:0.75rem;color:var(--ink-2);">@ ' + escHtml(sym) + '</span>'
       +   '<input class="receipt-unit" type="number" value="' + it.unit_price + '" oninput="updateReceiptRow(' + i + ',this.value,null)">'
       +   '<span class="receipt-total" id="rtot-' + i + '">＝ ' + fmtMoney(it.amount, _receiptCurrency) + '</span>'
       + '</div></div>';
@@ -1794,61 +2110,194 @@ function addReceiptRow() {
   document.getElementById('receiptItemList').innerHTML = receiptRows();
   updateReceiptSaveBtn();
 }
+function toggleReceiptCurrency() {
+  _receiptCurrency = (_receiptCurrency === S.foreignCode) ? S.homeCode : S.foreignCode;
+  updateCurrencyButtons();
+  document.getElementById('receiptItemList').innerHTML = receiptRows();
+  updateReceiptSaveBtn();
+}
 function updateReceiptSaveBtn() {
   var sum = _receiptItems.reduce(function(s, it){ return s + (it.amount || 0); }, 0);
   if (_receiptTax && _receiptTax.fee > 0) sum += _receiptTax.fee;
   document.getElementById('receiptSaveBtn').textContent =
-    '確認儲存（' + _receiptItems.length + ' 筆・' + fmtMoney(sum, _receiptCurrency) + '）';
+    '存到' + (_receiptBook === 'shared' ? '公帳' : '我的帳')
+    + '（' + _receiptItems.length + ' 筆・' + fmtMoney(sum, _receiptCurrency) + '）';
   document.getElementById('receiptSaveNote').textContent =
     (_receiptCurrency === S.homeCode) ? '' : ('≈ ' + fmtMoney(sum * S.rate, S.homeCode));
 }
-
 function confirmReceiptSave() {
   var date = document.getElementById('receiptDate').value || todayStr();
   var cat  = document.getElementById('receiptCat').value;
   var pay  = document.getElementById('receiptPay').value;
   var store = (_receiptStore || '').trim();
-  var data = getItems();
-  var saved = 0;
-  var firstId = null;
-
+  var payer = _receiptBook === 'shared' ? (document.getElementById('receiptPayer').value || myEmail()) : null;
+  var split = _receiptBook === 'shared'
+    ? ((_receiptSplit && _receiptSplit.length) ? _receiptSplit.slice() : allMemberEmails())
+    : null;
+  var out = [];
   var push = function(name, qty, unit, isFee) {
-    var id = newId();
     var entry = {
-      id: id, name: name, store: store, date: date, cat: cat, pay: pay,
-      currency: _receiptCurrency, unitPrice: unit, qty: qty,
-      amt: Math.round(unit * qty)
+      id: newId(), name: name, store: store, date: date, cat: cat, pay: pay,
+      currency: _receiptCurrency, unitPrice: unit, qty: qty, amt: Math.round(unit * qty)
     };
     if (_receiptCurrency !== S.homeCode) entry.rate = S.rate;
     if (_receiptTax && (!isFee || _receiptTax.isTaxFree)) entry.isTaxFree = _receiptTax.isTaxFree;
-    data.unshift(entry);
-    if (!firstId) firstId = id;
-    saved++;
+    if (_receiptBook === 'shared') {
+      entry.by = myEmail() || '';
+      entry.payer = payer;
+      entry.split = split;
+    }
+    out.push(entry);
   };
-
   _receiptItems.forEach(function(it) {
     var name = (it.name || '').trim();
     if (!name) return;
-    var qty = it.qty || 1;
-    var unit = it.unit_price || 0;
-    if (!unit && !name) return;
-    push(name, qty, unit, false);
+    push(name, it.qty || 1, it.unit_price || 0, false);
   });
   if (_receiptTax && _receiptTax.fee > 0) push('免稅手續費', 1, _receiptTax.fee, true);
+  if (!out.length) { alert('沒有可儲存的品項'); return; }
+  if (_receiptThumb) setThumb(out[0].id, _receiptThumb);
 
-  if (!saved) { alert('沒有可儲存的品項'); return; }
-  if (_receiptThumb && firstId) { setThumb(firstId, _receiptThumb); }
-  saveItems(data);
-  openGroups['d-' + date] = true;
-  renderLedger();
-  var msg = '已新增 ' + saved + ' 筆記帳';
+  putItems(_receiptBook, out);
+  openGroups[_receiptBook + '-d-' + date] = true;
+  if (_receiptBook !== currentBook) switchBook(_receiptBook); else renderLedger();
+  var msg = '已新增 ' + out.length + ' 筆到' + (_receiptBook === 'shared' ? '公帳' : '我的帳');
   closeReceipt();
   alert(msg);
 }
-
 function closeReceipt() {
   document.getElementById('receiptOverlay').classList.remove('open');
-  _receiptItems = []; _receiptStore = ''; _receiptTax = null; _receiptThumb = null;
+  _receiptItems = []; _receiptStore = ''; _receiptTax = null; _receiptThumb = null; _receiptSplit = null;
+}
+
+/* ══════════════════════════════════════════════════════════
+   分帳結算（只算公帳）
+   每筆消費：付款人先墊全額，分攤名單裡的人各自均分
+   ══════════════════════════════════════════════════════════ */
+function computeBalances() {
+  var bal = {};
+  var touch = function(e) { if (e && bal[e] === undefined) bal[e] = 0; };
+  allMemberEmails().forEach(touch);
+
+  itemsOf('shared').forEach(function(it) {
+    var amt = toHome(it);
+    if (!amt) return;
+    var payer = it.payer || it.by || '';
+    var split = (it.split && it.split.length) ? it.split : allMemberEmails();
+    if (!split.length) return;
+    touch(payer);
+    if (payer) bal[payer] += amt;
+    var share = amt / split.length;
+    split.forEach(function(e) { touch(e); bal[e] -= share; });
+  });
+
+  // 四捨五入後把誤差補到絕對值最大的人身上，確保總和為 0
+  var rounded = {}, sum = 0, maxKey = null, maxAbs = -1;
+  Object.keys(bal).forEach(function(k) {
+    rounded[k] = Math.round(bal[k]);
+    sum += rounded[k];
+    if (Math.abs(rounded[k]) > maxAbs) { maxAbs = Math.abs(rounded[k]); maxKey = k; }
+  });
+  if (maxKey && sum !== 0) rounded[maxKey] -= sum;
+  return rounded;
+}
+function computeTransfers(bal) {
+  var creditors = [], debtors = [];
+  Object.keys(bal).forEach(function(k) {
+    if (bal[k] > 0) creditors.push({ e: k, v: bal[k] });
+    else if (bal[k] < 0) debtors.push({ e: k, v: -bal[k] });
+  });
+  creditors.sort(function(a, b){ return b.v - a.v; });
+  debtors.sort(function(a, b){ return b.v - a.v; });
+  var out = [], i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    var amt = Math.min(debtors[i].v, creditors[j].v);
+    if (amt > 0) out.push({ from: debtors[i].e, to: creditors[j].e, amt: amt });
+    debtors[i].v -= amt; creditors[j].v -= amt;
+    if (debtors[i].v <= 0) i++;
+    if (creditors[j].v <= 0) j++;
+  }
+  return out;
+}
+function paidByPerson() {
+  var map = {};
+  itemsOf('shared').forEach(function(it) {
+    var p = it.payer || it.by || '';
+    if (!p) return;
+    map[p] = (map[p] || 0) + toHome(it);
+  });
+  return Object.keys(map).map(function(k){ return { name: memberName(k), email: k, amt: map[k] }; })
+    .sort(function(a, b){ return b.amt - a.amt; });
+}
+function renderSettlement() {
+  if (!members().length) {
+    return '<div class="stat-card"><div class="stat-card-title">🤝 分帳結算</div>'
+      + '<div style="font-size:0.78rem;color:var(--ink-2);line-height:1.7;">還沒有設定同行成員，算不出分攤。'
+      + (isAdmin() ? '請到 ⚙️ 設定 → 同行成員 加入大家的 Email。' : '請管理員設定成員名單。') + '</div></div>';
+  }
+  var bal = computeBalances();
+  var transfers = computeTransfers(bal);
+  var me = myEmail();
+  var mine = me ? transfers.filter(function(t){ return t.from === me || t.to === me; }) : [];
+
+  var html = '<div class="stat-card"><div class="stat-card-title">🤝 分帳結算</div>';
+
+  if (me && bal[me] !== undefined) {
+    var net = bal[me];
+    var paid = itemsOf('shared').reduce(function(s, it){ return s + ((it.payer || it.by) === me ? toHome(it) : 0); }, 0);
+    html += '<div class="settle-net">'
+      + '<div><div class="settle-sub">你的淨額</div>'
+      + '<div class="settle-net-num" style="color:' + (net >= 0 ? 'var(--green)' : 'var(--red)') + ';">'
+      +   (net >= 0 ? '＋' : '−') + fmtMoney(Math.abs(net), S.homeCode).replace('−','') + '</div></div>'
+      + '<div style="text-align:right;" class="settle-sub">你先墊了 ' + fmtMoney(paid, S.homeCode) + '<br>'
+      +   '應分攤 ' + fmtMoney(paid - net, S.homeCode) + '</div>'
+      + '</div>';
+
+    if (!mine.length) {
+      html += '<div style="font-size:0.8rem;color:var(--ink-2);padding:0.4rem 0;">目前你跟大家兩不相欠 🎉</div>';
+    } else {
+      mine.forEach(function(t) {
+        var pay = t.from === me;
+        html += '<div class="settle-row">'
+          + '<span class="settle-dir ' + (pay ? 'pay' : 'get') + '">' + (pay ? '你要付' : '要付你') + '</span>'
+          + '<span class="settle-who">' + escHtml(memberName(pay ? t.to : t.from)) + '</span>'
+          + '<span class="settle-amt">' + fmtMoney(t.amt, S.homeCode) + '</span></div>';
+      });
+    }
+  } else {
+    html += '<div style="font-size:0.8rem;color:var(--ink-2);">登入後這裡會顯示你要付給誰、誰要付你。</div>';
+  }
+
+  html += '<button class="settle-all-toggle" onclick="toggleAllSettle()">▾ 看所有人的結算</button>'
+    + '<div id="allSettle" style="display:none;margin-top:0.6rem;">';
+  if (!transfers.length) {
+    html += '<div style="font-size:0.78rem;color:var(--ink-2);">目前沒有人需要付錢給別人。</div>';
+  } else {
+    transfers.forEach(function(t) {
+      html += '<div class="settle-row">'
+        + '<span class="settle-who">' + escHtml(memberName(t.from)) + ' → ' + escHtml(memberName(t.to)) + '</span>'
+        + '<span class="settle-amt">' + fmtMoney(t.amt, S.homeCode) + '</span></div>';
+    });
+  }
+  html += '<div style="font-size:0.68rem;color:var(--ink-2);margin-top:0.6rem;line-height:1.6;">'
+    + '轉帳筆數已最小化：把每個人的淨額互相抵銷後，用最少的次數還清。</div></div></div>';
+
+  // 每人先墊了多少
+  var paidList = paidByPerson();
+  if (paidList.length) {
+    html += '<div class="stat-card"><div class="stat-card-title">💳 每人先墊金額</div>';
+    paidList.forEach(function(p, i) {
+      html += '<div class="rank-row"><span class="rank-no">' + (i+1) + '</span>'
+        + '<span class="rank-name">' + escHtml(p.name) + '</span>'
+        + '<span class="rank-amt">' + fmtMoney(p.amt, S.homeCode) + '</span></div>';
+    });
+    html += '</div>';
+  }
+  return html;
+}
+function toggleAllSettle() {
+  var el = document.getElementById('allSettle');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1859,15 +2308,13 @@ var PAY_COLORS = ['#576f72','#a8846a','#7d9d9c','#c3b5a0','#6e8b74'];
 
 function donutSvg(entries, colors) {
   var total = entries.reduce(function(s, e){ return s + e.amt; }, 0);
-  if (!total) return '<div style="text-align:center;color:rgba(87,111,114,0.4);font-size:0.75rem;padding:2rem 0;">尚無資料</div>';
+  if (!total) return '<div style="text-align:center;color:var(--ink-2);font-size:0.75rem;padding:2rem 0;">尚無資料</div>';
   var r = 40, c = 2 * Math.PI * r, off = 0, arcs = '';
   entries.forEach(function(e, i) {
     var len = e.amt / total * c;
-    arcs += '<circle cx="50" cy="50" r="' + r + '" fill="none"'
-      + ' stroke="' + colors[i % colors.length] + '" stroke-width="17"'
-      + ' stroke-dasharray="' + len.toFixed(2) + ' ' + (c - len).toFixed(2) + '"'
-      + ' stroke-dashoffset="' + (-off).toFixed(2) + '"'
-      + ' transform="rotate(-90 50 50)"></circle>';
+    arcs += '<circle cx="50" cy="50" r="' + r + '" fill="none" stroke="' + colors[i % colors.length] + '"'
+      + ' stroke-width="17" stroke-dasharray="' + len.toFixed(2) + ' ' + (c - len).toFixed(2) + '"'
+      + ' stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 50 50)"></circle>';
     off += len;
   });
   return '<svg viewBox="0 0 100 100" width="100%" height="100%">' + arcs + '</svg>';
@@ -1875,12 +2322,9 @@ function donutSvg(entries, colors) {
 function legendHtml(entries, colors, total) {
   return entries.map(function(e, i) {
     var pct = total ? Math.round(e.amt / total * 100) : 0;
-    return '<div class="legend-item">'
-      + '<span class="legend-dot" style="background:' + colors[i % colors.length] + '"></span>'
-      + '<span>' + escHtml(e.name) + '</span>'
-      + '<span class="legend-pct">' + pct + '%</span>'
-      + '<span class="legend-amt">' + fmtMoney(e.amt, S.homeCode) + '</span>'
-      + '</div>';
+    return '<div class="legend-item"><span class="legend-dot" style="background:' + colors[i % colors.length] + '"></span>'
+      + '<span>' + escHtml(e.name) + '</span><span class="legend-pct">' + pct + '%</span>'
+      + '<span class="legend-amt">' + fmtMoney(e.amt, S.homeCode) + '</span></div>';
   }).join('');
 }
 function groupSum(data, keyFn) {
@@ -1894,23 +2338,22 @@ function groupSum(data, keyFn) {
     .filter(function(e){ return e.amt > 0; })
     .sort(function(a, b){ return b.amt - a.amt; });
 }
-
 function renderStats() {
-  var data = getItems();
+  var data = itemsOf(currentBook);
   var total = data.reduce(function(s, i){ return s + toHome(i); }, 0);
   var cats = groupSum(data, function(i){ return i.cat; });
   var pays = groupSum(data, function(i){ return i.pay; });
   var stores = groupSum(data, function(i){ return storeKeyOf(i); }).slice(0, 10);
   var days = groupSum(data, function(i){ return i.date; });
+  var sumOf = function(list){ return list.reduce(function(s, e){ return s + e.amt; }, 0); };
 
   var html = '<div class="stat-card">'
-    + '<div class="stat-card-title">總支出</div>'
+    + '<div class="stat-card-title">' + (currentBook === 'shared' ? '👥 公帳總支出' : '👤 我的帳總支出') + '</div>'
     + '<div class="stat-total">' + fmtMoney(total, S.homeCode) + '</div>'
     + '<div class="stat-total-sub">' + data.length + ' 筆・' + days.length + ' 天'
-    + (days.length ? '・平均每天 ' + fmtMoney(total / days.length, S.homeCode) : '') + '</div>'
-    + '</div>';
+    + (days.length ? '・平均每天 ' + fmtMoney(total / days.length, S.homeCode) : '') + '</div></div>';
 
-  var sumOf = function(list){ return list.reduce(function(s, e){ return s + e.amt; }, 0); };
+  if (currentBook === 'shared') html += renderSettlement();
 
   html += '<div class="stat-card"><div class="stat-card-title">分類支出</div>'
     + '<div class="donut-wrap">' + donutSvg(cats, CAT_COLORS) + '</div>'
@@ -1921,42 +2364,38 @@ function renderStats() {
     + legendHtml(pays, PAY_COLORS, sumOf(pays)) + '</div>';
 
   html += '<div class="stat-card"><div class="stat-card-title">消費店家前十名</div>';
-  if (!stores.length) html += '<div style="font-size:0.78rem;color:rgba(87,111,114,0.45);">尚無資料</div>';
+  if (!stores.length) html += '<div style="font-size:0.78rem;color:var(--ink-2);">尚無資料</div>';
   stores.forEach(function(s, i) {
-    html += '<div class="rank-row">'
-      + '<span class="rank-no">' + (i+1) + '</span>'
+    html += '<div class="rank-row"><span class="rank-no">' + (i+1) + '</span>'
       + '<span class="rank-name">' + escHtml(s.name) + '</span>'
-      + '<span class="rank-amt">' + fmtMoney(s.amt, S.homeCode) + '</span>'
-      + '</div>';
+      + '<span class="rank-amt">' + fmtMoney(s.amt, S.homeCode) + '</span></div>';
   });
   html += '</div>';
 
   html += '<div class="stat-card"><div class="stat-card-title">每日支出</div>';
   var byDay = days.slice().sort(function(a, b){ return a.name < b.name ? 1 : -1; });
-  if (!byDay.length) html += '<div style="font-size:0.78rem;color:rgba(87,111,114,0.45);">尚無資料</div>';
+  if (!byDay.length) html += '<div style="font-size:0.78rem;color:var(--ink-2);">尚無資料</div>';
   var maxDay = byDay.reduce(function(m, d){ return Math.max(m, d.amt); }, 0);
   byDay.forEach(function(d) {
     var w = maxDay ? Math.round(d.amt / maxDay * 100) : 0;
     html += '<div style="margin-bottom:0.5rem;">'
       + '<div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--ink);margin-bottom:0.2rem;">'
       +   '<span>' + escHtml(dateLabel(d.name)) + '</span>'
-      +   '<span style="font-weight:600;color:var(--accent-deep);">' + fmtMoney(d.amt, S.homeCode) + '</span>'
-      + '</div>'
+      +   '<span style="font-weight:600;color:var(--accent-deep);">' + fmtMoney(d.amt, S.homeCode) + '</span></div>'
       + '<div style="height:6px;background:var(--card-2);border-radius:3px;overflow:hidden;">'
       +   '<div style="height:100%;width:' + w + '%;background:linear-gradient(90deg,#576f72,#a8846a);"></div>'
       + '</div></div>';
   });
   html += '</div>';
-
   document.getElementById('statsBody').innerHTML = html;
 }
 
 /* ══════════════════════════════════════════════════════════
-   備份／還原
+   備份
    ══════════════════════════════════════════════════════════ */
 function exportJson() {
   var payload = { app: 'travel-ledger', version: APP_VERSION, exportedAt: new Date().toISOString(),
-                  settings: S, items: getItems() };
+                  settings: S, books: { me: itemsOf('me'), shared: itemsOf('shared') } };
   var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1971,73 +2410,52 @@ function importJson(e) {
   var reader = new FileReader();
   reader.onload = function(ev) {
     var payload;
-    try { payload = JSON.parse(ev.target.result); }
-    catch(err) { alert('檔案格式不正確'); return; }
-    var incoming = Array.isArray(payload) ? payload : (payload.items || []);
-    if (!Array.isArray(incoming) || !incoming.length) { alert('檔案裡沒有記帳資料'); return; }
-    var merge = confirm('匯入 ' + incoming.length + ' 筆記錄。\n\n按「確定」＝合併到現有資料\n按「取消」＝覆蓋現有全部資料');
-    var data;
-    if (merge) {
-      var seen = {};
-      data = getItems();
-      data.forEach(function(i){ seen[i.id] = 1; });
-      incoming.forEach(function(i){ if (!seen[i.id]) data.unshift(i); });
-    } else {
-      data = incoming;
-    }
-    if (!merge && payload.settings) {
-      S = Object.assign({}, DEFAULT_SETTINGS, payload.settings);
-      persistSettings();
-      applySettings();
-    }
-    saveItems(data);
+    try { payload = JSON.parse(ev.target.result); } catch(err) { alert('檔案格式不正確'); return; }
+    var books = payload.books || { me: (payload.items || (Array.isArray(payload) ? payload : [])) , shared: [] };
+    var n = (books.me || []).length + (books.shared || []).length;
+    if (!n) { alert('檔案裡沒有記帳資料'); return; }
+    if (!confirm('匯入 ' + n + ' 筆記錄（會合併到現有資料）？')) return;
+    ['me','shared'].forEach(function(b) {
+      var incoming = books[b] || [];
+      if (!incoming.length) return;
+      var have = {};
+      itemsOf(b).forEach(function(i){ have[String(i.id)] = 1; });
+      var add = incoming.filter(function(i){ return !have[String(i.id)]; });
+      if (add.length) putItems(b, add);
+    });
     renderLedger();
-    renderSettingsForm();
-    alert('匯入完成，目前共 ' + data.length + ' 筆');
+    alert('匯入完成');
   };
   reader.readAsText(file);
 }
 
 /* ══════════════════════════════════════════════════════════
-   Firebase 雲端同步（選用）
-   設定檔由使用者自行貼上；沒設定就只用本機 localStorage
+   Firebase：登入、兩本帳的即時同步、設定下發
    ══════════════════════════════════════════════════════════ */
-var FB_SDK = [
-  'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js',
-  'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js'
-];
-var FB_COLLECTION = 'ledger_sync';
-var FB = { ready: false, authed: false, listening: false, db: null, auth: null, col: null, error: null };
+var FB = { ready:false, authed:false, listening:false, db:null, auth:null, uid:null, email:null, error:null };
 
-function fbCanSync() { return FB.ready && FB.authed; }
-function noop() {}
-
-function parseFbConfig(txt) {
-  if (!txt || !txt.trim()) return null;
-  var t = txt.trim().replace(/^(?:const|var|let)\s+\w+\s*=\s*/, '').replace(/;\s*$/, '');
-  try { return JSON.parse(t); } catch(e) {}
-  try { return Function('"use strict";return (' + t + ');')(); } catch(e) {}
-  return null;
+function activeFbConfig() {
+  if (FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey) return FIREBASE_CONFIG;
+  var txt = localStorage.getItem(LS.fbConfig);
+  if (!txt) return null;
+  try { return JSON.parse(txt); } catch(e) {}
+  try { return Function('"use strict";return (' + txt.trim().replace(/^(?:const|var|let)\s+\w+\s*=\s*/, '').replace(/;\s*$/, '') + ');')(); }
+  catch(e) { return null; }
 }
 function saveFbConfig() {
-  var txt = document.getElementById('setFbConfig').value;
-  if (!txt.trim()) { clearFbConfig(); return; }
-  var cfg = parseFbConfig(txt);
-  if (!cfg || !cfg.apiKey || !cfg.projectId) {
-    alert('看不懂這段 Firebase 設定，請確認有 apiKey 與 projectId');
-    return;
-  }
-  localStorage.setItem(LS.fbConfig, txt.trim());
+  if (FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey) { alert('Firebase 設定已經寫在程式碼裡，改這裡沒有作用'); return; }
+  if (!isAdmin() && FB.ready) { alert('只有管理員可以修改'); return; }
+  var txt = document.getElementById('setFbConfig').value.trim();
+  if (!txt) { clearFbConfig(); return; }
+  localStorage.setItem(LS.fbConfig, txt);
   alert('已儲存，重新載入後連線');
   location.reload();
 }
 function clearFbConfig() {
-  if (!confirm('清除 Firebase 設定？資料仍會留在本機，只是不再同步雲端。')) return;
+  if (!confirm('清除本機的 Firebase 設定？資料仍留在本機，只是不再同步。')) return;
   localStorage.removeItem(LS.fbConfig);
   location.reload();
 }
-
 function loadScripts(urls, done, fail) {
   var i = 0;
   (function next() {
@@ -2049,73 +2467,73 @@ function loadScripts(urls, done, fail) {
     document.head.appendChild(s);
   })();
 }
-
 function fbInit() {
-  var cfg = parseFbConfig(localStorage.getItem(LS.fbConfig) || '');
+  var cfg = activeFbConfig();
   if (!cfg) { renderFbAuthStatus(); return; }
   loadScripts(FB_SDK, function() {
     try {
       firebase.initializeApp(cfg);
-      FB.db   = firebase.firestore();
+      FB.db = firebase.firestore();
       FB.auth = firebase.auth();
-      FB.col  = FB.db.collection(FB_COLLECTION);
       FB.ready = true;
       FB.db.enablePersistence({ synchronizeTabs: false }).catch(noop);
       FB.auth.onAuthStateChanged(function(user) {
         FB.authed = !!user;
+        FB.uid   = user ? user.uid : null;
+        FB.email = user ? (user.email || '').toLowerCase() : null;
         if (user) fbStart();
+        else { FB.listening = false; }
         renderFbAuthStatus();
+        renderLedger();
       });
-    } catch(err) {
-      FB.error = err.message || String(err);
-    }
+    } catch(err) { FB.error = err.message || String(err); }
     renderFbAuthStatus();
   }, function(err) {
     FB.error = err.message;
     renderFbAuthStatus();
   });
 }
-
-function fbPush(kind, data) {
-  if (!fbCanSync()) return;
-  if (kind === 'items') FB.col.doc('items').set({ items: data, updatedAt: Date.now() }).catch(noop);
-  else                  FB.col.doc('settings').set({ data: data, updatedAt: Date.now() }).catch(noop);
-}
-
 function fbStart() {
   if (FB.listening) return;
   FB.listening = true;
 
-  /* 首次登入：雲端還沒有資料就把本機的推上去 */
-  FB.col.doc('items').get().then(function(snap) {
+  // 設定：所有人監聽，管理員改了立刻套用到每台裝置
+  FB.db.collection('config').doc('app').onSnapshot(function(snap) {
     if (!snap.exists) {
-      var local = getItems();
-      if (local.length) FB.col.doc('items').set({ items: local, updatedAt: Date.now() });
+      if (isAdmin()) FB.db.collection('config').doc('app').set(S).catch(noop);
+      return;
     }
-  }).catch(noop);
-  FB.col.doc('settings').get().then(function(snap) {
-    if (!snap.exists) FB.col.doc('settings').set({ data: S, updatedAt: Date.now() });
-  }).catch(noop);
-
-  FB.col.doc('items').onSnapshot(function(snap) {
-    if (!snap.exists) return;
-    var arr = snap.data().items;
-    if (!Array.isArray(arr)) return;
-    _cache.items = arr;
-    try { localStorage.setItem(LS.items, JSON.stringify(arr)); } catch(e) {}
-    renderLedger();
-  }, noop);
-
-  FB.col.doc('settings').onSnapshot(function(snap) {
-    if (!snap.exists || !snap.data().data) return;
-    if (document.getElementById('settingsModal').classList.contains('open')) return; // 編輯中不覆蓋
-    _cache.settings = snap.data().data;
-    loadSettings();
+    if (document.getElementById('settingsModal').classList.contains('open') && isAdmin()) return; // 管理員編輯中不覆蓋
+    loadSettings(snap.data());
     applySettings();
+    renderSettingsForm();
     renderLedger();
   }, noop);
-}
 
+  // 個人帳：第一次登入時把本機既有資料搬上去
+  var meCol = colFor('me');
+  meCol.limit(1).get().then(function(snap) {
+    if (snap.empty && itemsOf('me').length) putItems('me', itemsOf('me').slice());
+  }).catch(noop);
+
+  listenBook('me');
+  listenBook('shared');
+}
+function listenBook(book) {
+  var col = colFor(book);
+  if (!col) return;
+  col.onSnapshot(function(snap) {
+    var arr = [];
+    snap.forEach(function(doc){ arr.push(doc.data()); });
+    arr.sort(function(a, b){ return String(b.id).localeCompare(String(a.id)); });
+    BOOKS[book] = arr;
+    persistLocal(book);
+    renderLedger();
+    if (document.getElementById('statsModal').classList.contains('open')) renderStats();
+  }, function(err) {
+    if (book === 'shared') console.warn('公帳同步失敗（可能是 Firestore 規則沒開）:', err && err.message);
+  });
+}
 function fbLogin() {
   var email = (document.getElementById('fbEmail') || {}).value || '';
   var pw    = (document.getElementById('fbPw') || {}).value || '';
@@ -2126,59 +2544,49 @@ function fbLogin() {
   FB.auth.signInWithEmailAndPassword(email, pw).catch(function(e) {
     var msg = '登入失敗：';
     if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') msg += '帳號或密碼錯誤';
-    else if (e.code === 'auth/user-not-found')    msg += '帳號不存在';
+    else if (e.code === 'auth/user-not-found')    msg += '帳號不存在（要由管理員在 Firebase 建立）';
     else if (e.code === 'auth/invalid-email')     msg += 'Email 格式錯誤';
     else if (e.code === 'auth/too-many-requests') msg += '嘗試次數過多，請稍後再試';
     else msg += e.message;
     if (err) { err.textContent = msg; err.style.display = 'block'; }
-    if (btn) { btn.disabled = false; btn.textContent = '登入並開啟同步'; }
+    if (btn) { btn.disabled = false; btn.textContent = '登入'; }
   });
 }
 function fbLogout() {
   if (!FB.auth) return;
+  if (!confirm('登出後就看不到公帳，個人帳只剩這台裝置上的資料。確定要登出？')) return;
   FB.auth.signOut().then(function() {
-    FB.authed = false;
-    FB.listening = false;
+    FB.authed = false; FB.uid = null; FB.email = null; FB.listening = false;
+    BOOKS.shared = []; persistLocal('shared');
+    if (currentBook === 'shared') switchBook('me');
     renderFbAuthStatus();
+    renderLedger();
   });
 }
-
 function renderFbAuthStatus() {
   var el = document.getElementById('fbAuthStatus');
   if (!el) return;
-  var hasCfg = !!localStorage.getItem(LS.fbConfig);
-
-  if (!hasCfg) {
-    el.innerHTML = '<div class="fb-note">目前<b>只存在這台裝置</b>。想在手機、平板、電腦之間同步，'
-      + '請在下方貼上 Firebase 設定。</div>';
+  if (!activeFbConfig()) {
+    el.innerHTML = '<div class="fb-note">還沒設定 Firebase，目前<b>只有「我的帳」可用，而且只存在這台裝置</b>。'
+      + '設定後才有公帳與多人同步。</div>';
     return;
   }
-  if (FB.error) {
-    el.innerHTML = '<div class="fb-note" style="color:var(--red);">連線失敗：' + escHtml(FB.error) + '</div>';
-    return;
-  }
-  if (!FB.ready) {
-    el.innerHTML = '<div class="fb-note">連線中…</div>';
-    return;
-  }
+  if (FB.error) { el.innerHTML = '<div class="fb-note" style="color:var(--red);">連線失敗：' + escHtml(FB.error) + '</div>'; return; }
+  if (!FB.ready) { el.innerHTML = '<div class="fb-note">連線中…</div>'; return; }
   if (FB.authed) {
-    var email = FB.auth.currentUser ? FB.auth.currentUser.email : '';
-    el.innerHTML = '<div class="fb-auth-row">'
-      + '<span style="color:#5f7d63;">✓</span>'
-      + '<span class="fb-email">' + escHtml(email) + '</span>'
-      + '<span class="fb-badge">同步中</span>'
-      + '</div>'
-      + '<button class="set-btn danger wide" onclick="fbLogout()">登出（停止同步）</button>';
+    el.innerHTML = '<div class="fb-auth-row"><span style="color:var(--green);">✓</span>'
+      + '<span class="fb-email">' + escHtml(FB.email || '') + '</span>'
+      + '<span class="fb-badge">' + (isAdmin() ? '管理員' : '同步中') + '</span></div>'
+      + '<button class="set-btn danger wide" onclick="fbLogout()">登出</button>';
     return;
   }
-  el.innerHTML = '<div class="fb-note">登入後這台裝置就會與雲端雙向同步；未登入時只存本機。</div>'
+  el.innerHTML = '<div class="fb-note">用管理員幫你建立的帳號登入，才能使用公帳與分帳結算。</div>'
     + '<div class="fb-form">'
     + '<input id="fbEmail" class="set-input" type="email" placeholder="帳號 Email" autocomplete="username">'
     + '<input id="fbPw" class="set-input" type="password" placeholder="密碼" autocomplete="current-password"'
     +   ' onkeydown="if(event.key===\'Enter\')fbLogin()">'
     + '<div id="fbErr" class="fb-err"></div>'
-    + '<button id="fbLoginBtn" class="set-btn" onclick="fbLogin()">登入並開啟同步</button>'
-    + '</div>';
+    + '<button id="fbLoginBtn" class="set-btn" onclick="fbLogin()">登入</button></div>';
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -2186,7 +2594,6 @@ function renderFbAuthStatus() {
    ══════════════════════════════════════════════════════════ */
 var _swWaiting = null, _swReg = null;
 function swApplyUpdate() { if (_swWaiting) _swWaiting.postMessage({ type: 'SKIP_WAITING' }); }
-
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', function(){ window.location.reload(); });
   window.addEventListener('load', function() {
@@ -2207,8 +2614,6 @@ if ('serviceWorker' in navigator) {
     if (document.visibilityState === 'visible' && _swReg) _swReg.update().catch(noop);
   });
 }
-
-/* iOS PWA：鍵盤彈出時把輸入框捲進可視範圍 */
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', function() {
     var el = document.activeElement;
@@ -2223,12 +2628,24 @@ if (window.visualViewport) {
    ══════════════════════════════════════════════════════════ */
 (function init() {
   loadSettings();
+  loadLocalBooks();
   applySettings();
   document.getElementById('fDate').value = todayStr();
   setTaxBtn(document.getElementById('fTaxBtn'), null);
-  renderLedger();
+  currentBook = 'me';
+  switchBook('me');
   fbInit();
+  // 記住上次看的帳本（登入後才切回公帳）
+  var last = localStorage.getItem(LS.book);
+  if (last === 'shared') {
+    var tries = 0;
+    var t = setInterval(function() {
+      if (FB.ready && FB.authed) { clearInterval(t); switchBook('shared'); }
+      if (++tries > 40) clearInterval(t);
+    }, 250);
+  }
 })();
+
 </script>
 </body>
 </html>
