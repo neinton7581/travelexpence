@@ -10,7 +10,8 @@ const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.json',
-  './icon.png'
+  './icon.png',
+  './icon-maskable.png'
 ];
 
 // ── 接收主頁面指令（立即套用新版）──
