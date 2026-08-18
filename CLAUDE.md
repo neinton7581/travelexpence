@@ -49,6 +49,20 @@ BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
 兩個 modal 各自有 `render*Form()` / `commit*Form()`，關閉時才寫回設定。
 `settingsEditing()` 用來避免雲端推送的設定蓋掉管理員正在編輯的內容。
 
+### 付款人預設值
+
+`fillMemberSelect(id, forceMe)` 的第二參數：`forceMe=true` 會忽略欄位目前的值，
+強制重設成 `myEmail()`（目前登入者）。這是為了修一個 bug——欄位第一次繪製時
+（App 剛載入、還沒登入前）沒有「目前使用者」可用，會退回瀏覽器預設的清單第一位，
+之後任何呼叫都會用「保留原值」的邏輯把這個錯誤值一路帶下去，導致付款人永遠卡在
+第一位成員身上，不會因為換人登入而更新。
+
+**任何「使用者身分剛確定」的時機都要傳 `true`**：`switchBook('shared')`、
+`onAuthStateChanged` 登入後（若當下在公帳）、收據確認頁切到公帳
+（`paintReceiptBookBtn`）。`fPayer`／`receiptPayer` 需要這個修正；`editPayer`
+本來就在 `fillMemberSelect` 之後又用 `item.payer || item.by || myEmail()`
+明確覆寫一次，不受影響。不要拿掉 `forceMe`，否則這個 bug 會回來。
+
 ### 刪除權限
 
 公帳的項目只有記錄者（`item.by`）本人能刪。前端用 `canDelete(item)` 決定要顯示 ✕

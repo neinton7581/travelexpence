@@ -1253,10 +1253,12 @@ function fillSelect(id, arr) {
   el.innerHTML = arr.map(function(v){ return '<option value="' + escHtml(v) + '">' + escHtml(v) + '</option>'; }).join('');
   if (prev && arr.indexOf(prev) >= 0) el.value = prev;
 }
-function fillMemberSelect(id) {
+/* forceMe=true：忽略目前選到的值，強制重設成目前登入者（用在「切到公帳」
+   「登入/登出」這類「誰在用」已經改變的時機，避免付款人卡在上一個使用者身上）*/
+function fillMemberSelect(id, forceMe) {
   var el = document.getElementById(id);
   if (!el) return;
-  var prev = el.value;
+  var prev = forceMe ? '' : el.value;
   var list = members();
   el.innerHTML = list.length
     ? list.map(function(m){ return '<option value="' + escHtml(m.email) + '">' + escHtml(m.name || m.email) + '</option>'; }).join('')
@@ -1484,6 +1486,7 @@ function switchBook(book) {
   document.getElementById('tab-me').classList.toggle('active', book === 'me');
   document.getElementById('tab-shared').classList.toggle('active', book === 'shared');
   document.getElementById('sharedFields').style.display = (book === 'shared') ? 'block' : 'none';
+  if (book === 'shared') fillMemberSelect('fPayer', true);
   document.getElementById('addPanelTitle').textContent =
     book === 'shared' ? '✏️ 新增記帳（公帳）' : '✏️ 新增記帳（我的帳）';
   document.getElementById('saveBtn').textContent =
@@ -2074,7 +2077,7 @@ function paintReceiptBookBtn() {
   btn.classList.toggle('home', _receiptBook === 'shared');
   document.getElementById('receiptShared').style.display = _receiptBook === 'shared' ? 'block' : 'none';
   if (_receiptBook === 'shared') {
-    fillMemberSelect('receiptPayer');
+    fillMemberSelect('receiptPayer', true);
     renderSplitChips('receiptSplit', _receiptSplit);
   }
   updateReceiptSaveBtn();
@@ -2648,6 +2651,8 @@ function fbInit() {
         var entry = document.getElementById('sysEntry');
         if (entry) entry.style.display = isAdmin() ? 'block' : 'none';
         if (isAdmin()) setTimeout(maybeAutoFetchRate, 1500);
+        // 登入/登出＝目前使用者變了，公帳的付款人預設要跟著重新校正
+        if (currentBook === 'shared') fillMemberSelect('fPayer', true);
         renderLedger();
       });
     } catch(err) { FB.error = err.message || String(err); }
