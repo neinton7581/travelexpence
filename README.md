@@ -1,4 +1,4 @@
-# 旅行記帳 · Travel Ledger
+# 旅行記帳 · Travel Expense
 
 出國旅行用的記帳 PWA。單一 `index.html`，沒有框架、沒有建置步驟，
 放上 GitHub Pages 就能在手機「加入主畫面」當成 App 用。
@@ -25,7 +25,7 @@
 ## 部署
 
 推上 `main` 後在 GitHub 的 **Settings → Pages** 選 `main` / `root`，
-網址會是 `https://<帳號>.github.io/travel-ledger/`。
+網址會是 `https://neinton7581.github.io/travelexpence/`。
 用手機 Safari 開啟 → 分享 → 「加入主畫面」。
 
 ## 設定
