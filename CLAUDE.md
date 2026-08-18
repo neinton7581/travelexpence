@@ -43,8 +43,8 @@ BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
 
 | Modal | 誰能開 | 內容 |
 |---|---|---|
-| `settingsModal` | 所有人 | 帳號登入、幣別與匯率、分類與付款方式、資料備份。非管理員的區塊加 `.locked` class 變唯讀 |
-| `sysModal` | 只有管理員 | 同行成員、Gemini API Key、Firebase 設定。入口按鈕 `#sysEntry` 只在 `isAdmin()` 時顯示，`openModal()` 裡另有一道防線 |
+| `settingsModal` | 所有人 | 帳號登入、幣別與匯率、資料備份。幣別與匯率加 `.locked` class 對非管理員唯讀 |
+| `sysModal` | 只有管理員 | 分類與付款方式、同行成員、Gemini API Key（含模型名稱）、Firebase 設定。入口按鈕 `#sysEntry` 只在 `isAdmin()` 時顯示，`openModal()` 裡另有一道防線 |
 
 兩個 modal 各自有 `render*Form()` / `commit*Form()`，關閉時才寫回設定。
 `settingsEditing()` 用來避免雲端推送的設定蓋掉管理員正在編輯的內容。
