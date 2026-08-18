@@ -818,7 +818,7 @@ button { cursor: pointer; }
   </div>
 </div>
 
-<!-- ══════════ 設定 MODAL ══════════ -->
+<!-- ══════════ 設定 MODAL（所有人）══════════ -->
 <div class="modal" id="settingsModal" onclick="modalBgClick(event,'settingsModal')">
   <div class="modal-card">
     <div class="modal-hd">
@@ -829,20 +829,17 @@ button { cursor: pointer; }
 
       <div id="adminNote"></div>
 
-      <!-- 同行成員（分帳用）-->
-      <div class="set-section" id="secMembers">
-        <div class="set-title">👥 同行成員</div>
-        <div class="set-row" style="flex-direction:column;align-items:stretch;gap:0.35rem;">
-          <textarea class="set-area" id="setMembers" style="min-height:4.5rem;"
-            placeholder="一行一個人，格式：Email, 名字
-neinton7581@gmail.com, 我
-friend@gmail.com, 阿明"></textarea>
-        </div>
-        <div class="set-hint">
-          公帳的分攤與結算依這份名單計算，Email 要跟 Firebase 建立的登入帳號一致。
-          名單有變動時，舊紀錄的分攤對象不會自動更新。
+      <!-- 帳號（每個人都要能登入）-->
+      <div class="set-section">
+        <div class="set-title">👤 帳號</div>
+        <div id="fbAuthStatus" style="padding:0.5rem 0.9rem 0.7rem;">
+          <div class="fb-note">載入中…</div>
         </div>
       </div>
+
+      <!-- 系統設定入口：只有管理員看得到 -->
+      <button class="set-btn wide" id="sysEntry" style="display:none;padding:0.75rem;margin-bottom:0.8rem;font-size:0.8rem;"
+              onclick="openSysSettings()">🔧 系統設定（僅管理員）›</button>
 
       <!-- 幣別與匯率 -->
       <div class="set-section" id="secCurrency">
@@ -879,49 +876,6 @@ friend@gmail.com, 阿明"></textarea>
         <div class="set-hint">以逗號分隔，順序即為下拉選單順序。</div>
       </div>
 
-      <!-- AI 辨識 -->
-      <div class="set-section" id="secAi">
-        <div class="set-title">🤖 AI 收據辨識</div>
-        <div class="set-row">
-          <span class="set-label">API Key</span>
-          <input class="set-input" id="setGeminiKey" type="password" placeholder="貼上 Gemini API Key">
-          <button class="set-btn" onclick="saveGeminiKey()">儲存</button>
-        </div>
-        <div class="set-hint">
-          使用 Google Gemini 辨識收據照片。到 <b>aistudio.google.com/apikey</b> 免費申請。
-          由管理員設定一次，<b>所有成員共用這把 Key</b>，其他人不用各自申請。<br>
-          ⚠️ 共用的代價：這把 Key 會傳到每位成員的瀏覽器，技術上有辦法被取出。
-          建議在 Google AI Studio 幫這把 Key 設用量上限。
-        </div>
-      </div>
-
-      <!-- 雲端同步 -->
-      <div class="set-section" id="secCloud">
-        <div class="set-title">☁️ 雲端同步（Firebase）</div>
-        <div id="fbAuthStatus" style="padding:0.5rem 0.9rem 0.7rem;">
-          <div class="fb-note">載入中…</div>
-        </div>
-        <div class="set-row" style="flex-direction:column;align-items:stretch;gap:0.4rem;">
-          <span class="set-label" style="min-width:0;">Firebase 設定</span>
-          <textarea class="set-area" id="setFbConfig" placeholder='貼上 firebaseConfig，例如：
-{
-  "apiKey": "...",
-  "authDomain": "xxx.firebaseapp.com",
-  "projectId": "xxx",
-  "appId": "..."
-}'></textarea>
-          <div style="display:flex;gap:0.4rem;">
-            <button class="set-btn" style="flex:1;" onclick="saveFbConfig()">儲存並連線</button>
-            <button class="set-btn danger" style="flex:1;" onclick="clearFbConfig()">清除設定</button>
-          </div>
-        </div>
-        <div class="set-hint">
-          正常情況下 Firebase 設定是寫在程式碼裡的，這個欄位只是管理員測試用的備援。<br>
-          每個人的帳號由管理員在 Firebase Console → Authentication 建立，這個 App 不開放自行註冊。
-          詳細步驟見 repo 的 README。
-        </div>
-      </div>
-
       <!-- 資料備份 -->
       <div class="set-section" id="secBackup">
         <div class="set-title">💾 資料備份</div>
@@ -933,9 +887,75 @@ friend@gmail.com, 阿明"></textarea>
         <div class="set-hint">匯出檔含兩本帳的全部記錄與設定（不含收據縮圖）。匯入時會依 id 合併，不會蓋掉現有資料。</div>
       </div>
 
-      <div style="text-align:center;font-size:0.66rem;color:rgba(87,111,114,0.5);padding:0.4rem 0 0.2rem;">
+      <div style="text-align:center;font-size:0.66rem;color:var(--ink-2);padding:0.4rem 0 0.2rem;">
         旅行記帳 · <span id="appVersion"></span>
       </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 系統設定 MODAL（只有管理員進得來）══════════ -->
+<div class="modal" id="sysModal" onclick="modalBgClick(event,'sysModal')">
+  <div class="modal-card">
+    <div class="modal-hd">
+      <span class="modal-title">🔧 系統設定</span>
+      <button class="modal-close" onclick="closeModal('sysModal')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="locked-note" style="background:rgba(95,125,99,0.14);color:var(--green);margin:0 0 0.8rem;">
+        🔑 這一頁只有管理員進得來。改完會即時同步到所有成員的 App。
+      </div>
+
+      <!-- 同行成員（分帳用）-->
+      <div class="set-section" id="secMembers">
+        <div class="set-title">👥 同行成員</div>
+        <div class="set-row" style="flex-direction:column;align-items:stretch;gap:0.35rem;">
+          <textarea class="set-area" id="setMembers" style="min-height:5rem;"
+            placeholder="一行一個人，格式：Email, 名字
+neinton7581@gmail.com, 我
+friend@gmail.com, 阿明"></textarea>
+        </div>
+        <div class="set-hint">
+          公帳的分攤與結算依這份名單計算，Email 要跟 Firebase Authentication 建立的登入帳號一致。
+          名單有變動時，舊紀錄的分攤對象不會自動更新。
+        </div>
+      </div>
+
+      <!-- AI 收據辨識 -->
+      <div class="set-section" id="secAi">
+        <div class="set-title">🤖 AI 收據辨識</div>
+        <div class="set-row">
+          <span class="set-label">API Key</span>
+          <input class="set-input" id="setGeminiKey" type="password" placeholder="貼上 Gemini API Key">
+          <button class="set-btn" onclick="saveGeminiKey()">儲存</button>
+        </div>
+        <div class="set-hint">
+          使用 Google Gemini 辨識收據照片。到 <b>aistudio.google.com/apikey</b> 免費申請。
+          設定一次，<b>所有成員共用這把 Key</b>，其他人不用各自申請。<br>
+          ⚠️ 共用的代價：這把 Key 會傳到每位成員的瀏覽器，技術上有辦法被取出。
+          建議在 Google AI Studio 幫這把 Key 設用量上限。
+        </div>
+      </div>
+
+      <!-- Firebase 設定 -->
+      <div class="set-section" id="secCloud">
+        <div class="set-title">☁️ Firebase 設定</div>
+        <div class="set-row" style="flex-direction:column;align-items:stretch;gap:0.4rem;">
+          <textarea class="set-area" id="setFbConfig" placeholder="貼上 firebaseConfig"></textarea>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="set-btn" style="flex:1;" onclick="saveFbConfig()">儲存並連線</button>
+            <button class="set-btn danger" style="flex:1;" onclick="clearFbConfig()">清除設定</button>
+          </div>
+        </div>
+        <div class="set-hint">
+          正常情況下這段是寫在程式碼裡的，這個欄位只是臨時測試用的備援。<br>
+          成員帳號請到 Firebase Console → Authentication 建立，這個 App 不開放自行註冊。
+        </div>
+      </div>
+
+      <div id="sysDangerNote" class="set-hint" style="text-align:center;padding-top:0.2rem;"></div>
 
     </div>
   </div>
@@ -1235,28 +1255,25 @@ function renderSettingsForm() {
   document.getElementById('setRateUnit').textContent = S.homeCode + ' / 1 ' + S.foreignCode;
   v('setCats', S.cats.join(', '));
   v('setPays', S.pays.join(', '));
-  v('setMembers', members().map(function(m){ return m.email + ', ' + m.name; }).join('\n'));
-  v('setGeminiKey', '');
-  document.getElementById('setGeminiKey').placeholder =
-    S.geminiKey ? 'Key 已設定 ✓（重新輸入可覆蓋）' : '貼上 Gemini API Key';
-  var fbBox = document.getElementById('setFbConfig');
-  if (fbBox) fbBox.value = FIREBASE_CONFIG ? '（已寫在程式碼裡，由 repo 管理）' : (localStorage.getItem(LS.fbConfig) || '');
   document.getElementById('appVersion').textContent = APP_VERSION;
 
-  ['secCurrency','secCats','secAi','secCloud','secMembers'].forEach(function(id) {
+  ['secCurrency','secCats'].forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.classList.toggle('locked', !admin);
   });
+  var entry = document.getElementById('sysEntry');
+  if (entry) entry.style.display = admin ? 'block' : 'none';
+
   var note = document.getElementById('adminNote');
   if (note) {
     note.innerHTML = admin
       ? '<div class="locked-note" style="background:rgba(95,125,99,0.14);color:var(--green);">🔑 你是管理員。這裡的設定改完會即時同步到所有人的 App。</div>'
-      : '<div class="locked-note">🔒 幣別、匯率、分類、成員名單與 API Key 由管理員統一設定，這裡只能檢視。</div>';
+      : '<div class="locked-note">🔒 幣別、匯率與分類由管理員統一設定，這裡只能檢視。</div>';
   }
   renderFbAuthStatus();
 }
 function commitSettingsForm() {
-  if (!isAdmin()) return;              // 非管理員不寫入
+  if (!isAdmin()) return;
   var v = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
   var splitList = function(x) { return x.split(/[,，、]/).map(function(t){ return t.trim(); }).filter(Boolean); };
   S.homeCode    = v('setHomeCode') || DEFAULT_SETTINGS.homeCode;
@@ -1268,7 +1285,39 @@ function commitSettingsForm() {
   var cats = splitList(v('setCats')), pays = splitList(v('setPays'));
   if (cats.length) S.cats = cats;
   if (pays.length) S.pays = pays;
-  S.members = parseMembers(v('setMembers'));
+  persistSettings();
+  applySettings();
+  renderLedger();
+}
+
+/* ── 系統設定（只有管理員進得來）── */
+function openSysSettings() {
+  if (!isAdmin()) { alert('只有管理員能開啟系統設定'); return; }
+  closeModal('settingsModal');
+  setTimeout(function(){ openModal('sysModal'); }, 150);
+}
+function renderSysForm() {
+  var v = function(id, val){ var el = document.getElementById(id); if (el) el.value = val; };
+  v('setMembers', members().map(function(m){ return m.email + ', ' + m.name; }).join('\n'));
+  v('setGeminiKey', '');
+  document.getElementById('setGeminiKey').placeholder =
+    S.geminiKey ? 'Key 已設定 ✓（重新輸入可覆蓋）' : '貼上 Gemini API Key';
+  var fbBox = document.getElementById('setFbConfig');
+  if (fbBox) {
+    var inCode = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
+    fbBox.value = inCode ? '' : (localStorage.getItem(LS.fbConfig) || '');
+    fbBox.placeholder = inCode
+      ? '已由程式碼提供（' + FIREBASE_CONFIG.projectId + '），這裡不用填'
+      : '貼上 firebaseConfig';
+  }
+  var d = document.getElementById('sysDangerNote');
+  if (d) d.textContent = '管理員：' + ADMIN_EMAILS.join('、');
+}
+function commitSysForm() {
+  if (!isAdmin()) return;
+  var el = document.getElementById('setMembers');
+  if (!el) return;
+  S.members = parseMembers(el.value);
   persistSettings();
   applySettings();
   renderLedger();
@@ -1386,13 +1435,20 @@ function switchBook(book) {
    ══════════════════════════════════════════════════════════ */
 function togglePanel(id) { document.getElementById(id).classList.toggle('collapsed'); }
 function openModal(id) {
+  if (id === 'sysModal' && !isAdmin()) { alert('只有管理員能開啟系統設定'); return; }
   if (id === 'settingsModal') renderSettingsForm();
+  if (id === 'sysModal') renderSysForm();
   document.getElementById(id).classList.add('open');
   if (id === 'statsModal') renderStats();
 }
 function closeModal(id) {
   if (id === 'settingsModal') commitSettingsForm();
+  if (id === 'sysModal') commitSysForm();
   document.getElementById(id).classList.remove('open');
+}
+function settingsEditing() {
+  return document.getElementById('settingsModal').classList.contains('open')
+      || document.getElementById('sysModal').classList.contains('open');
 }
 function modalBgClick(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
 function openLightbox(src) {
@@ -2481,6 +2537,8 @@ function fbInit() {
         if (user) fbStart();
         else { FB.listening = false; }
         renderFbAuthStatus();
+        var entry = document.getElementById('sysEntry');
+        if (entry) entry.style.display = isAdmin() ? 'block' : 'none';
         renderLedger();
       });
     } catch(err) { FB.error = err.message || String(err); }
@@ -2500,10 +2558,11 @@ function fbStart() {
       if (isAdmin()) FB.db.collection('config').doc('app').set(S).catch(noop);
       return;
     }
-    if (document.getElementById('settingsModal').classList.contains('open') && isAdmin()) return; // 管理員編輯中不覆蓋
+    if (settingsEditing() && isAdmin()) return;   // 管理員編輯中不覆蓋
     loadSettings(snap.data());
     applySettings();
-    renderSettingsForm();
+    if (document.getElementById('settingsModal').classList.contains('open')) renderSettingsForm();
+    if (document.getElementById('sysModal').classList.contains('open')) renderSysForm();
     renderLedger();
   }, noop);
 
