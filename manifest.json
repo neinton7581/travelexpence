@@ -1,0 +1,19 @@
+{
+  "name": "旅行記帳",
+  "short_name": "旅行記帳",
+  "description": "旅行消費記帳 PWA，支援 AI 收據辨識、匯率換算與雲端同步",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#fff8ef",
+  "theme_color": "#fff8ef",
+  "lang": "zh-TW",
+  "categories": ["finance", "travel", "productivity"],
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
