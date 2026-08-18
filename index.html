@@ -634,6 +634,14 @@ button { cursor: pointer; }
 .locked input, .locked select, .locked textarea, .locked .set-btn {
   opacity: 0.5; pointer-events: none;
 }
+/* 登入區永遠不可以被鎖住：判斷管理員要先登入，鎖住它會造成
+   「要登入才能解鎖登入表單」的死結 */
+#fbAuthStatus, #fbAuthStatus * {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+/* iOS 對 font-size 小於 16px 的輸入框會在聚焦時自動放大版面，登入欄位維持 16px */
+#fbEmail, #fbPw { font-size: 16px; padding: 0.55rem 0.7rem; }
 .who-chip {
   font-size: 0.62rem; background: rgba(95,125,99,0.16); color: var(--green);
   border-radius: 6px; padding: 0.15rem 0.45rem; white-space: nowrap;
