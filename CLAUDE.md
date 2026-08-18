@@ -53,6 +53,23 @@ Google Gemini（`GEMINI_MODEL`）。prompt 在 `receiptPrompt()`，
 重點是要求純 JSON、排除稅金／小計／手續費行，並在 `applyReceiptResult()` 做
 「品項加總 vs 收據 total」的比例校正。回傳被截斷時 `parseGeminiJson()` 會嘗試修補括號。
 
+## 色票
+
+配色集中在 `index.html` 最上面的 `:root`，改色只要動那裡的 CSS 變數，
+不要在個別規則裡寫死色碼（統計圖表的 `CAT_COLORS` / `PAY_COLORS` 例外，
+那兩個陣列在 JS 的統計區塊）。
+
+| 變數 | 色碼 | 用途 |
+|---|---|---|
+| `--bg` | `#f0ebe3` | 頁面底色 |
+| `--card` | `#fbf8f3` | 卡片、面板 |
+| `--card-2` | `#e4dccf` | 日期分組標題、標籤等次級表面 |
+| `--sage` / `--accent` | `#7d9d9c` / `#5d7b79` | 灰綠點綴／文字用的深一階 |
+| `--accent-deep` | `#576f72` | 主要按鈕、標題 |
+| `--ink` / `--ink-2` | `#3b4e50` / `#4a6260` | 主要／次要文字 |
+| `--clay` / `--clay-deep` | `#8c7561` / `#6f5c4b` | AI 辨識、付款方式 |
+| `--red` / `--green` | `#a4635c` / `#5f7d63` | 負數與刪除／免稅 |
+
 ## 慣例
 
 - 純 ES5 寫法（`var`／`function`），跟原本的程式碼一致，不要突然改用 ESM 或框架。
