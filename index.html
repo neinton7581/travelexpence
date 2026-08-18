@@ -311,6 +311,8 @@ button { cursor: pointer; }
   color: rgba(164,99,92,0.5); font-size: 0.8rem; border-radius: 5px;
 }
 .del-btn:active { color: var(--red); background: rgba(164,99,92,0.1); }
+.del-btn.lockmark { color: rgba(87,111,114,0.3); font-size: 0.72rem; }
+.del-btn.lockmark:active { color: var(--ink-2); background: rgba(87,111,114,0.08); }
 
 .editable { border-radius: 4px; }
 .editable:active { background: rgba(87,111,114,0.12); }
@@ -865,9 +867,17 @@ button { cursor: pointer; }
         <div class="set-row">
           <span class="set-label">匯率</span>
           <input class="set-input" id="setRate" type="number" inputmode="decimal" step="0.0001" min="0">
-          <span class="set-unit" id="setRateUnit">TWD / 1 JPY</span>
+          <button class="set-btn" id="rateFetchBtn" onclick="fetchRate(true)" title="抓取今天的匯率">🔄</button>
         </div>
-        <div class="set-hint">左欄為代碼、右欄為顯示符號。匯率＝1 單位外幣可換多少主要幣別，記帳與統計都以主要幣別加總。</div>
+        <div class="set-row" style="padding-top:0;">
+          <span class="set-label"></span>
+          <span class="set-unit" id="setRateUnit">TWD / 1 JPY</span>
+          <span class="set-unit" id="setRateDate" style="margin-left:auto;"></span>
+        </div>
+        <div class="set-hint">
+          匯率＝1 單位外幣可換多少主要幣別。按 🔄 抓當天匯率（管理員每天第一次開 App 也會自動抓一次）。<br>
+          <b>每筆記帳會記住當下的匯率</b>，之後調整匯率不會動到已經記過的帳。
+        </div>
       </div>
 
       <!-- 分類與付款方式 -->
@@ -939,11 +949,17 @@ friend@gmail.com, 阿明"></textarea>
           <input class="set-input" id="setGeminiKey" type="password" placeholder="貼上 Gemini API Key">
           <button class="set-btn" onclick="saveGeminiKey()">儲存</button>
         </div>
+        <div class="set-row">
+          <span class="set-label">模型</span>
+          <input class="set-input" id="setGeminiModel" placeholder="gemini-2.5-flash">
+        </div>
         <div class="set-hint">
           使用 Google Gemini 辨識收據照片。到 <b>aistudio.google.com/apikey</b> 免費申請。
           設定一次，<b>所有成員共用這把 Key</b>，其他人不用各自申請。<br>
           ⚠️ 共用的代價：這把 Key 會傳到每位成員的瀏覽器，技術上有辦法被取出。
-          建議在 Google AI Studio 幫這把 Key 設用量上限。
+          建議在 Google AI Studio 幫這把 Key 設用量上限。<br>
+          模型留空＝用預設的 <b>gemini-2.5-flash</b>。哪天 Google 停掉這個型號時，
+          辨識會回報「API 錯誤 404」，改填新的型號即可，不用改程式。
         </div>
       </div>
 
@@ -1097,7 +1113,7 @@ var FB_SDK = [
   'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js'
 ];
-var GEMINI_MODEL = 'gemini-2.5-flash';
+var DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
 var LS = {
   me:       'ledger_items_me',
@@ -1115,7 +1131,9 @@ var DEFAULT_SETTINGS = {
   cats: ['餐飲', '交通', '購物', '住宿', '娛樂', '伴手禮', '其他'],
   pays: ['現金', '信用卡', '行動支付', '交通卡', '其他'],
   geminiKey: '',
-  members: []      // [{email, name}]
+  geminiModel: '',  // 空 = 用 DEFAULT_GEMINI_MODEL
+  rateDate: '',     // 匯率最後更新日
+  members: []       // [{email, name}]
 };
 
 var S = null;                        // 目前設定
@@ -1154,10 +1172,13 @@ function fmtMoney(amt, code) {
   var n = Math.round(amt || 0);
   return (n < 0 ? '−' : '') + symbolOf(code) + Math.abs(n).toLocaleString();
 }
+/* 換算成主要幣別。
+   一律用「記帳當下存下來的匯率」(item.rate)，之後改匯率不會動到舊帳；
+   只有早期沒存匯率的資料才退回用目前設定值。 */
 function toHome(item) {
   var amt = item.amt != null ? item.amt : 0;
   if (!item.currency || item.currency === S.homeCode) return Math.round(amt);
-  var r = (item.currency === S.foreignCode) ? S.rate : (item.rate || S.rate);
+  var r = item.rate || S.rate;
   return Math.round(amt * (r || 0));
 }
 function newId() { return String(Date.now()) + '-' + Math.random().toString(36).slice(2, 7); }
@@ -1261,6 +1282,8 @@ function renderSettingsForm() {
   v('setForeignCode', S.foreignCode); v('setForeignSym', S.foreignSym);
   v('setRate', S.rate);
   document.getElementById('setRateUnit').textContent = S.homeCode + ' / 1 ' + S.foreignCode;
+  var rd = document.getElementById('setRateDate');
+  if (rd) rd.textContent = S.rateDate ? ('更新於 ' + S.rateDate) : '尚未自動更新過';
   v('setCats', S.cats.join(', '));
   v('setPays', S.pays.join(', '));
   document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1276,7 +1299,9 @@ function renderSettingsForm() {
   if (note) {
     note.innerHTML = admin
       ? '<div class="locked-note" style="background:rgba(95,125,99,0.14);color:var(--green);">🔑 你是管理員。這裡的設定改完會即時同步到所有人的 App。</div>'
-      : '<div class="locked-note">🔒 幣別、匯率與分類由管理員統一設定，這裡只能檢視。</div>';
+      : (FB.authed
+          ? '<div class="locked-note">🔒 幣別、匯率與分類由管理員統一設定，這裡只能檢視。</div>'
+          : '<div class="locked-note">🔒 請先在下方登入。設定由管理員統一管理，登入後才知道你是不是管理員。</div>');
   }
   renderFbAuthStatus();
 }
@@ -1310,6 +1335,8 @@ function renderSysForm() {
   v('setGeminiKey', '');
   document.getElementById('setGeminiKey').placeholder =
     S.geminiKey ? 'Key 已設定 ✓（重新輸入可覆蓋）' : '貼上 Gemini API Key';
+  v('setGeminiModel', S.geminiModel || '');
+  document.getElementById('setGeminiModel').placeholder = DEFAULT_GEMINI_MODEL;
   var fbBox = document.getElementById('setFbConfig');
   if (fbBox) {
     var inCode = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey);
@@ -1326,6 +1353,8 @@ function commitSysForm() {
   var el = document.getElementById('setMembers');
   if (!el) return;
   S.members = parseMembers(el.value);
+  var mdl = document.getElementById('setGeminiModel');
+  if (mdl) S.geminiModel = mdl.value.trim();
   persistSettings();
   applySettings();
   renderLedger();
@@ -1342,6 +1371,38 @@ function saveGeminiKey() {
   alert('已儲存，所有成員的 App 會自動套用');
 }
 function geminiKey() { return (S && S.geminiKey) || ''; }
+function geminiModel() { return (S && S.geminiModel) || DEFAULT_GEMINI_MODEL; }
+
+/* ── 匯率自動更新（open.er-api.com，免費、免金鑰）──
+   只有管理員抓，抓完寫進 config，其他人跟著同步。
+   已經記下的帳不受影響，新的匯率只用在之後新增的記錄。 */
+function fetchRate(manual) {
+  if (!isAdmin()) { if (manual) alert('只有管理員可以更新匯率'); return; }
+  var from = S.foreignCode, to = S.homeCode;
+  if (from === to) { if (manual) alert('主要幣別與外幣相同，不需要匯率'); return; }
+  var btn = document.getElementById('rateFetchBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  fetch('https://open.er-api.com/v6/latest/' + encodeURIComponent(from))
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      if (!d || !d.rates || !d.rates[to]) throw new Error('查不到 ' + from + ' → ' + to + ' 的匯率');
+      S.rate = Math.round(d.rates[to] * 10000) / 10000;
+      S.rateDate = todayStr();
+      S.rateSource = (d.time_last_update_utc || '').slice(0, 16);
+      persistSettings();
+      applySettings();
+      if (document.getElementById('settingsModal').classList.contains('open')) renderSettingsForm();
+      renderLedger();
+      if (manual) alert('已更新：1 ' + from + ' = ' + S.rate + ' ' + to);
+    })
+    .catch(function(e) { if (manual) alert('匯率更新失敗：' + (e.message || e) + '\n可以手動輸入'); })
+    .then(function() { if (btn) { btn.disabled = false; btn.textContent = '🔄'; } });
+}
+function maybeAutoFetchRate() {
+  if (!isAdmin()) return;
+  if (S.rateDate === todayStr()) return;   // 今天抓過了
+  fetchRate(false);
+}
 
 /* ══════════════════════════════════════════════════════════
    兩本帳的資料存取
@@ -1695,7 +1756,9 @@ function renderLedger() {
         +   '<span class="store-name editable" data-act="editstore" data-date="' + escHtml(date) + '" data-store="' + escHtml(store) + '">'
         +     '🏪 ' + escHtml(store) + sBadge + '</span>'
         +   '<span class="store-right"><span class="store-sub">' + fmtMoney(sTotal, S.homeCode) + '</span>'
-        +     '<button class="del-btn" data-act="delstore" data-date="' + escHtml(date) + '" data-store="' + escHtml(store) + '" title="刪除整間店">🗑</button>'
+        +     (sItems.every(canDelete)
+                ? '<button class="del-btn" data-act="delstore" data-date="' + escHtml(date) + '" data-store="' + escHtml(store) + '" title="刪除整間店">🗑</button>'
+                : '')
         +     '<span class="grp-arrow">▼</span></span>'
         + '</div><div class="store-items">';
 
@@ -1725,7 +1788,9 @@ function renderLedger() {
           +   '<div class="amt-main' + (neg ? ' neg' : '') + '">' + fmtMoney(item.amt, item.currency || S.homeCode) + '</div>'
           +   (isHome ? '' : '<div class="amt-sub' + (neg ? ' neg' : '') + '">≈ ' + fmtMoney(homeAmt, S.homeCode) + '</div>')
           + '</div>'
-          + '<button class="del-btn" data-act="delitem" data-id="' + escHtml(item.id) + '">✕</button>';
+          + (canDelete(item)
+              ? '<button class="del-btn" data-act="delitem" data-id="' + escHtml(item.id) + '">✕</button>'
+              : '<button class="del-btn lockmark" data-act="cantdel" data-id="' + escHtml(item.id) + '" title="只有記錄者可以刪除">🔒</button>');
         if (thumbs[item.id]) {
           html += '<img class="item-thumb" data-act="thumb" data-id="' + escHtml(item.id) + '" src="' + thumbs[item.id] + '" alt="">';
         }
@@ -1751,6 +1816,11 @@ document.getElementById('ledgerList').addEventListener('click', function(e) {
     openGroups[gid] = !box.classList.toggle('collapsed');
   }
   else if (act === 'delitem')   delItem(el.getAttribute('data-id'));
+  else if (act === 'cantdel') {
+    var it = findItem(el.getAttribute('data-id'));
+    alert('這筆是「' + memberName(it && it.by) + '」記錄的，只有記錄的人可以刪除。\n\n'
+      + '如果金額或名稱有誤，可以直接點金額或品名修改。');
+  }
   else if (act === 'delstore')  delStore(el.getAttribute('data-date'), el.getAttribute('data-store'));
   else if (act === 'edititem')  openItemEdit(el.getAttribute('data-id'));
   else if (act === 'editname')  inlineEditName(el, el.getAttribute('data-id'));
@@ -1758,14 +1828,30 @@ document.getElementById('ledgerList').addEventListener('click', function(e) {
   else if (act === 'thumb')     openLightbox(getThumb(el.getAttribute('data-id')));
 });
 
-function delItem(id) { dropItems(currentBook, [String(id)]); renderLedger(); }
+function delItem(id) {
+  var item = findItem(id);
+  if (!canDelete(item)) { alert('只有記錄這筆的人可以刪除'); return; }
+  dropItems(currentBook, [String(id)]);
+  renderLedger();
+}
 function delStore(date, store) {
   if (!confirm('確定要刪除「' + store + '」在 ' + dateLabel(date) + ' 的所有記錄嗎？')) return;
-  var ids = itemsOf(currentBook).filter(function(i) {
+  var group = itemsOf(currentBook).filter(function(i) {
     return i.date === date && storeKeyOf(i) === store;
-  }).map(function(i){ return String(i.id); });
+  });
+  if (!group.every(canDelete)) { alert('這間店裡有別人記錄的項目，不能整組刪除'); return; }
+  var ids = group.map(function(i){ return String(i.id); });
   dropItems(currentBook, ids);
   renderLedger();
+}
+/* 公帳的項目只有「記錄者本人」能刪；個人帳都是自己的。
+   舊資料若沒有 by 欄位（早期測試），視為可刪，與 Firestore 規則一致 */
+function canDelete(item) {
+  if (!item) return false;
+  if (currentBook !== 'shared') return true;
+  var by = String(item.by || '').toLowerCase();
+  if (!by) return true;
+  return by === String(myEmail() || '').toLowerCase();
 }
 function findItem(id) {
   var list = itemsOf(currentBook);
@@ -1831,7 +1917,10 @@ function openItemEdit(id) {
   var unit = (item.unitPrice != null && !isNaN(item.unitPrice) && item.unitPrice !== 0)
     ? item.unitPrice : Math.round((item.amt || 0) / qty);
 
-  document.getElementById('editTitle').textContent = item.name || '編輯項目';
+  document.getElementById('editTitle').innerHTML = escHtml(item.name || '編輯項目')
+    + (currentBook === 'shared' && item.by
+        ? '<span class="who-chip" style="margin-left:0.5rem;font-weight:400;">' + escHtml(memberName(item.by)) + ' 記錄</span>'
+        : '');
   document.getElementById('editUnitPrice').value = unit;
   document.getElementById('editQty').value = qty;
   document.getElementById('editDate').value = item.date || todayStr();
@@ -2039,7 +2128,7 @@ function receiptPrompt() {
 }
 
 function callGemini(apiKey, base64, mime, previewUrl) {
-  fetch('https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + encodeURIComponent(apiKey), {
+  fetch('https://generativelanguage.googleapis.com/v1beta/models/' + geminiModel() + ':generateContent?key=' + encodeURIComponent(apiKey), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -2049,7 +2138,13 @@ function callGemini(apiKey, base64, mime, previewUrl) {
   })
   .then(function(r){ return r.json(); })
   .then(function(res) {
-    if (res.error) throw new Error('API 錯誤：' + (res.error.message || JSON.stringify(res.error)));
+    if (res.error) {
+      var m = res.error.message || JSON.stringify(res.error);
+      if (res.error.code === 404 || /not found|not supported/i.test(m)) {
+        m += '\n\n（目前使用的模型：' + geminiModel() + '，可到系統設定更換）';
+      }
+      throw new Error('API 錯誤：' + m);
+    }
     if (!res.candidates || !res.candidates[0]) {
       throw new Error('API 沒有回傳內容。可能是圖片太大、API Key 額度用完或 Key 有誤。\n\n' + JSON.stringify(res).slice(0, 200));
     }
@@ -2547,6 +2642,7 @@ function fbInit() {
         renderFbAuthStatus();
         var entry = document.getElementById('sysEntry');
         if (entry) entry.style.display = isAdmin() ? 'block' : 'none';
+        if (isAdmin()) setTimeout(maybeAutoFetchRate, 1500);
         renderLedger();
       });
     } catch(err) { FB.error = err.message || String(err); }

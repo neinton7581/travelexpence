@@ -49,6 +49,16 @@ BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
 兩個 modal 各自有 `render*Form()` / `commit*Form()`，關閉時才寫回設定。
 `settingsEditing()` 用來避免雲端推送的設定蓋掉管理員正在編輯的內容。
 
+### 刪除權限
+
+公帳的項目只有記錄者（`item.by`）本人能刪。前端用 `canDelete(item)` 決定要顯示 ✕
+還是 🔒，`delItem()` / `delStore()` 進去前再擋一次；真正的防線是 Firestore 規則裡
+`shared_items` 的 `allow delete`（規則全文在 README）。改動任何一邊時兩邊要一起改，
+否則畫面允許但雲端拒絕，會變成看似刪掉、重新整理又出現。
+
+`allow update` 保持開放（大家可以互相修正錯字金額），但規則禁止改動 `by`，
+避免有人把記錄者改成自己再刪掉。
+
 ### 分帳結算
 
 `computeBalances()` 算每個人的淨額（先墊金額 − 應分攤），四捨五入的誤差補到絕對值最大的人
@@ -70,8 +80,15 @@ item = {
 }
 ```
 
-`toHome(item)` 換算成主要幣別：幣別等於目前設定的外幣就用「現在的匯率」
-（改匯率會即時反映到全部記錄），否則用記錄裡存的 `item.rate`。
+`toHome(item)` 換算成主要幣別，**一律用記錄裡存的 `item.rate`**（記帳當下的匯率），
+只有早期沒存匯率的資料才退回目前設定值。不要改成「用現在的匯率重算全部」——
+使用者要的是 8/18 記的帳永遠用 8/18 的匯率。
+
+匯率可由管理員手動輸入或按 🔄 用 `fetchRate()` 抓（open.er-api.com，免金鑰）；
+管理員每天第一次開 App 會自動抓一次（`maybeAutoFetchRate()`，用 `S.rateDate` 節流）。
+
+Gemini 模型放在 `S.geminiModel`（空值時用 `DEFAULT_GEMINI_MODEL`），可在系統設定更換，
+Google 停用某個型號時不需要改程式碼。
 
 ### AI 辨識
 

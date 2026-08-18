@@ -85,9 +85,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    function isAdmin() {
-      return signedIn() && request.auth.token.email.lower() in ['neinton7581@gmail.com'];
-    }
+    function myEmail()  { return request.auth.token.email.lower(); }
+    function isAdmin()  { return signedIn() && myEmail() in ['neinton7581@gmail.com']; }
 
     // 應用程式設定：成員可讀，只有管理員可寫
     match /config/{doc} {
@@ -95,9 +94,22 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 公帳：所有登入成員可讀寫
+    // 公帳
     match /shared_items/{item} {
-      allow read, write: if signedIn();
+      allow read: if signedIn();
+
+      // 只能以自己的身分新增
+      allow create: if signedIn()
+                    && request.resource.data.get('by', '').lower() == myEmail();
+
+      // 大家都可以修正內容（改錯字、改金額），但不能把記錄者改成自己
+      allow update: if signedIn()
+                    && request.resource.data.get('by', '') == resource.data.get('by', '');
+
+      // 只有記錄這筆的人可以刪除
+      allow delete: if signedIn()
+                    && (resource.data.get('by', '') == ''
+                        || resource.data.get('by', '').lower() == myEmail());
     }
 
     // 個人帳：只有本人，其他人連讀都不行
@@ -108,16 +120,11 @@ service cloud.firestore {
 }
 ```
 
-想改成「公帳只有記錄者本人與管理員能改」的話，把 `shared_items` 那段換成：
+刪除權限是**雙層**的：畫面上別人記的項目不會出現 ✕（顯示 🔒，點了會說明原因），
+而上面的規則讓「繞過畫面直接打 API」也一樣刪不掉。
 
-```
-    match /shared_items/{item} {
-      allow read:   if signedIn();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() ||
-        (signedIn() && resource.data.by.lower() == request.auth.token.email.lower());
-    }
-```
+管理員也不例外——連你也不能刪別人記的項目。真的需要清掉某筆（例如對方帳號沒了），
+可以直接在 Firebase Console 的 Firestore 資料頁手動刪。
 
 ### 4. 在 App 裡設定
 
@@ -138,6 +145,15 @@ service cloud.firestore {
 
 > ⚠️ **Gemini Key 是全體共用的**：它會傳到每位成員的瀏覽器，技術上有辦法被取出。
 > 建議在 Google AI Studio 幫這把 Key 設用量上限。
+
+## 匯率怎麼算
+
+**每筆記帳會把當下的匯率存進那筆記錄裡**，之後調整匯率不會動到已經記過的帳——
+8/18 記的就永遠用 8/18 的匯率換算，8/20 結算時也不會變。
+
+匯率來源是管理員設定的值，可以手動輸入，也可以按 🔄 抓當天匯率
+（免費的 open.er-api.com，不需金鑰）。管理員每天第一次打開 App 時也會自動抓一次，
+抓到的新匯率只用在之後新增的記錄上。
 
 ## 分帳怎麼算
 
