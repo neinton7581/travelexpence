@@ -2251,12 +2251,23 @@ function applyReceiptResult(parsed, previewUrl) {
       if (gapRatio > 0.01 && (sum > target || allowUp)) {
         var scale = target / sum;
         if (scale < 1) _receiptWholeDiscount = sum - target;  // 品項比折扣後總額多出來的部分＝整單折扣
+        var biggest = null;
         _receiptItems.forEach(function(it) {
           var newAmount = Math.round(it.amount * scale);
           if (scale < 1) it.discount = (it.discount || 0) + (it.amount - newAmount);
           it.amount = newAmount;
           it.unit_price = Math.round(it.amount / (it.qty || 1));
+          if (!biggest || it.amount > biggest.amount) biggest = it;
         });
+        // 每個品項各自四捨五入後，加總不一定精準對到 target（例如同時有多個 .5 邊界值
+        // 都無條件進位，累加出 1 圓誤差）——把殘差補到金額最大的品項，確保總和精準對帳
+        var roundedSum = _receiptItems.reduce(function(s, it){ return s + it.amount; }, 0);
+        var residual = target - roundedSum;
+        if (residual !== 0 && biggest) {
+          biggest.amount += residual;
+          if (scale < 1) biggest.discount = (biggest.discount || 0) + residual * -1;
+          biggest.unit_price = Math.round(biggest.amount / (biggest.qty || 1));
+        }
       }
     }
   }
