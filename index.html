@@ -352,6 +352,7 @@ button { cursor: pointer; }
 .badge.free { background: rgba(95,125,99,0.12); color: var(--green); }
 .badge.inc  { background: rgba(87,111,114,0.14); color: var(--accent-deep); }
 .badge.mix  { background: rgba(140,117,97,0.12); color: var(--clay-deep); }
+.badge.disc { background: rgba(140,117,97,0.14); color: var(--clay-deep); font-weight: 700; }
 .item-amt { text-align: right; }
 .item-amt:active { opacity: 0.6; }
 .amt-main { font-size: 0.88rem; font-weight: 600; color: var(--accent); }
@@ -492,7 +493,7 @@ button { cursor: pointer; }
   flex: 1; min-width: 0; font-size: 0.9rem; color: var(--ink);
   border: none; outline: none; background: transparent;
 }
-.receipt-sub { width: 100%; display: flex; align-items: center; gap: 0.3rem; padding-left: 1.7rem; }
+.receipt-sub { width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; padding-left: 1.7rem; }
 .receipt-qty, .receipt-unit {
   font-size: 0.9rem; color: var(--accent-deep); font-weight: 600;
   border: none; outline: none; background: rgba(87,111,114,0.06);
@@ -1811,7 +1812,9 @@ function renderLedger() {
         html += '<div class="item-row">'
           + '<div style="min-width:0;">'
           +   '<div class="item-name editable" data-act="editname" data-id="' + escHtml(item.id) + '">'
-          +     escHtml(item.name) + taxBadge(item.isTaxFree) + '</div>'
+          +     escHtml(item.name) + taxBadge(item.isTaxFree)
+          +     (item.discount > 0 ? '<span class="badge disc">折扣 ' + fmtMoney(item.discount, item.currency || S.homeCode) + '</span>' : '')
+          +   '</div>'
           +   '<div class="item-meta">'
           +     (item.qty > 1 ? '<span class="tag qty">×' + item.qty + ' @ ' + fmtMoney(item.unitPrice, item.currency) + '</span>' : '')
           +     (item.cat ? '<span class="tag">' + escHtml(item.cat) + '</span>' : '')
@@ -2087,6 +2090,7 @@ var _receiptTax = null;
 var _receiptCurrency = null;
 var _receiptThumb = null;
 var _receiptBook = 'me';
+var _receiptWholeDiscount = 0;  // 整單折扣金額（比例校正時算出來，純顯示用）
 
 function toggleReceiptBook() {
   if (_receiptBook === 'me') {
@@ -2142,7 +2146,7 @@ function handleReceiptScan(event) {
 function receiptPrompt() {
   return [
     '這是一張商店收據的照片。請仔細辨識，並以純 JSON 格式回傳（不可包含 markdown、程式碼區塊符號或任何說明文字，只回傳 JSON 物件本身）：',
-    '{"store":"店名（看不出來填 unknown）","date":"日期，格式 YYYY-MM-DD；若收據只寫月日，年份填今年（' + new Date().getFullYear() + '）；完全看不到填 null","currency":"貨幣代碼（如 JPY、TWD、KRW、USD、EUR；看不出來填 null）","total":顧客最終實際支付的金額數字（看收據最下方的合計／総計／支払／TOTAL 欄位，不含貨幣符號；看不到填 null）,"is_tax_free":布林值,"tax_rate_type":"只能填：免稅、標準稅率、減輕稅率、混合稅率、不明 其中之一","tax_amount":稅金數字（免稅填 0；不明填 null）,"tax_free_fee":免稅手續費／TaxFreeFee 金額數字（沒有填 0）,"items":[{"name":"品項名稱（翻成繁體中文，保持簡短）","qty":數量整數（預設 1）,"unit_price":每件單價數字,"amount":小計數字（unit_price×qty）}]}',
+    '{"store":"店名（看不出來填 unknown）","date":"日期，格式 YYYY-MM-DD；若收據只寫月日，年份填今年（' + new Date().getFullYear() + '）；完全看不到填 null","currency":"貨幣代碼（如 JPY、TWD、KRW、USD、EUR；看不出來填 null）","total":顧客最終實際支付的金額數字（看收據最下方的合計／総計／支払／TOTAL 欄位，不含貨幣符號；看不到填 null）,"is_tax_free":布林值,"tax_rate_type":"只能填：免稅、標準稅率、減輕稅率、混合稅率、不明 其中之一","tax_amount":稅金數字（免稅填 0；不明填 null）,"tax_free_fee":免稅手續費／TaxFreeFee 金額數字（沒有填 0）,"items":[{"name":"品項名稱（翻成繁體中文，保持簡短）","qty":數量整數（預設 1）,"unit_price":折扣後的每件單價數字,"amount":折扣後的小計數字（unit_price×qty）,"discount":這個品項被折抵掉的金額數字（沒有折扣填 0）}]}',
     '',
     '【絕對不可列入 items 的行】以下都不是商品，不得出現在 items 陣列：',
     '・TaxFreeFee／免稅手續費',
@@ -2153,13 +2157,15 @@ function receiptPrompt() {
     '【折扣／優惠券／クーポン割引的處理——非常重要】',
     '・如果一筆折扣緊接在某個商品後面、且明顯是針對該商品（例如印在該商品正下方、',
     '  金額對得上該商品的百分比），請直接把折扣金額扣進該商品的 amount，並同步',
-    '  重新計算 unit_price（＝折扣後的 amount÷qty），不要把這筆折扣另外列成一個',
-    '  獨立的 item。這種「這行是折扣」但視覺上跟著上一個商品的情況最常見，請優先',
-    '  假設折扣是跟著上一個商品的，除非收據上有明確標示是整單／滿額折扣。',
-    '・只有在折扣明顯是針對整張收據、不屬於任何單一商品時（例如結尾處的「會員折扣」',
-    '  「滿額折扣」「即結折扣」，通常沒有緊跟在特定商品後面），才把它保留成一個獨立',
-    '  的 item，name 開頭加註「折扣：」，金額填負數。',
-    '・除了這種整單折扣，items 裡不應該出現其他負數的 amount。',
+    '  重新計算 unit_price（＝折扣後的 amount÷qty），把扣掉的金額填進該商品的',
+    '  discount 欄位，不要把這筆折扣另外列成一個獨立的 item。這種「這行是折扣」但',
+    '  視覺上跟著上一個商品的情況最常見，請優先假設折扣是跟著上一個商品的，除非',
+    '  收據上有明確標示是整單／滿額折扣。',
+    '・如果折扣明顯是針對整張收據、不屬於任何單一商品（例如結尾處的「會員折扣」',
+    '  「滿額折扣」「即結折扣」），不要把它列成 item，也不要扣進任何單一商品，',
+    '  每個商品維持原本金額即可——系統會自動用 total 跟商品總和的差額，按各商品',
+    '  的金額比例分攤這筆折扣，你只要確保 total 是收據上最終實際支付的金額。',
+    '・items 裡不應該出現負數的 amount。',
     '',
     '【is_tax_free 判斷】',
     '・收據上有 TAX-FREE、免税、Tax Refund 等字樣或印章 → true',
@@ -2226,16 +2232,22 @@ function applyReceiptResult(parsed, previewUrl) {
   }).map(function(it) {
     var qty = parseInt(it.qty, 10) || 1;
     var unit = parseFloat(it.unit_price != null ? it.unit_price : it.amount) || 0;
-    return { name: String(it.name), qty: qty, unit_price: unit, amount: Math.round(qty * unit), split: allMemberEmails() };
+    var discount = Math.round(parseFloat(it.discount) || 0);
+    return { name: String(it.name), qty: qty, unit_price: unit, amount: Math.round(qty * unit),
+             discount: discount > 0 ? discount : 0, split: allMemberEmails() };
   });
   var total = parseFloat(parsed.total);
+  _receiptWholeDiscount = 0;
   if (!isNaN(total) && total > 0 && _receiptItems.length) {
     var sum = _receiptItems.reduce(function(s, it){ return s + it.amount; }, 0);
     var isFree = !!parsed.is_tax_free;
     if (sum > 0 && Math.abs(sum - total) / total > 0.01 && (!isFree || sum > total)) {
       var scale = total / sum;
+      if (scale < 1) _receiptWholeDiscount = sum - total;  // 品項比折扣後總額多出來的部分＝整單折扣
       _receiptItems.forEach(function(it) {
-        it.amount = Math.round(it.amount * scale);
+        var newAmount = Math.round(it.amount * scale);
+        if (scale < 1) it.discount = (it.discount || 0) + (it.amount - newAmount);
+        it.amount = newAmount;
         it.unit_price = Math.round(it.amount / (it.qty || 1));
       });
     }
@@ -2261,6 +2273,7 @@ function renderReceiptConfirm(storeName, previewUrl) {
     : '<span class="badge inc" style="margin:0;">🧾 ' + escHtml(t.rateType || '不明') + '</span>';
   if (t.isTaxFree && t.fee > 0) badge += '<span class="badge mix">手續費 ' + fmtMoney(t.fee, _receiptCurrency) + '</span>';
   if (!t.isTaxFree && t.taxAmount > 0) badge += '<span class="badge inc">稅 ' + fmtMoney(t.taxAmount, _receiptCurrency) + '</span>';
+  if (_receiptWholeDiscount > 0) badge += '<span class="badge disc">整單折扣 ' + fmtMoney(_receiptWholeDiscount, _receiptCurrency) + '（已按比例分攤到各品項）</span>';
 
   var html = '<div class="receipt-store-card">'
     + (previewUrl ? '<img src="' + previewUrl + '" alt="收據" onclick="openLightbox(this.src)">' : '')
@@ -2295,6 +2308,13 @@ function receiptRows() {
       }).join('');
       splitRow = '<div class="receipt-item-split"><span class="ris-label">誰的</span><div class="chips">' + chips + '</div></div>';
     }
+    var discBadge = '';
+    if (it.discount > 0) {
+      var pctRaw = it.discount / (it.amount + it.discount) * 100;
+      var pctRound = Math.round(pctRaw);
+      var pctText = Math.abs(pctRaw - pctRound) < 0.6 ? (pctRound + '%・') : '';
+      discBadge = '<span class="badge disc" id="rdisc-' + i + '">折扣 ' + pctText + fmtMoney(it.discount, _receiptCurrency) + '</span>';
+    }
     return '<div class="receipt-row">'
       + '<div class="receipt-num">' + (i+1) + '</div>'
       + '<input class="receipt-name" value="' + escHtml(it.name) + '" oninput="_receiptItems[' + i + '].name=this.value">'
@@ -2304,6 +2324,7 @@ function receiptRows() {
       +   '<span style="font-size:0.75rem;color:var(--ink-2);">@ ' + escHtml(sym) + '</span>'
       +   '<input class="receipt-unit" type="number" value="' + it.unit_price + '" oninput="updateReceiptRow(' + i + ',this.value,null)">'
       +   '<span class="receipt-total" id="rtot-' + i + '">＝ ' + fmtMoney(it.amount, _receiptCurrency) + '</span>'
+      +   discBadge
       + '</div>'
       + splitRow
       + '</div>';
@@ -2313,6 +2334,7 @@ function updateReceiptRow(i, unit, qty) {
   if (unit !== null) _receiptItems[i].unit_price = parseFloat(unit) || 0;
   if (qty !== null)  _receiptItems[i].qty = parseInt(qty, 10) || 1;
   _receiptItems[i].amount = Math.round(_receiptItems[i].qty * _receiptItems[i].unit_price);
+  _receiptItems[i].discount = 0;  // 手動改過金額，AI 辨識的折扣註記不再可信
   var el = document.getElementById('rtot-' + i);
   if (el) el.textContent = '＝ ' + fmtMoney(_receiptItems[i].amount, _receiptCurrency);
   updateReceiptSaveBtn();
@@ -2350,13 +2372,14 @@ function confirmReceiptSave() {
   var payer = _receiptBook === 'shared' ? (document.getElementById('receiptPayer').value || myEmail()) : null;
   var defaultSplit = (_receiptSplit && _receiptSplit.length) ? _receiptSplit.slice() : allMemberEmails();
   var out = [];
-  var push = function(name, qty, unit, isFee, itemSplit) {
+  var push = function(name, qty, unit, isFee, itemSplit, discount) {
     var entry = {
       id: newId(), name: name, store: store, date: date, cat: cat, pay: pay,
       currency: _receiptCurrency, unitPrice: unit, qty: qty, amt: Math.round(unit * qty)
     };
     if (_receiptCurrency !== S.homeCode) entry.rate = S.rate;
     if (_receiptTax && (!isFee || _receiptTax.isTaxFree)) entry.isTaxFree = _receiptTax.isTaxFree;
+    if (discount > 0) entry.discount = discount;
     if (_receiptBook === 'shared') {
       entry.by = myEmail() || '';
       entry.payer = payer;
@@ -2367,9 +2390,9 @@ function confirmReceiptSave() {
   _receiptItems.forEach(function(it) {
     var name = (it.name || '').trim();
     if (!name) return;
-    push(name, it.qty || 1, it.unit_price || 0, false, it.split);
+    push(name, it.qty || 1, it.unit_price || 0, false, it.split, it.discount);
   });
-  if (_receiptTax && _receiptTax.fee > 0) push('免稅手續費', 1, _receiptTax.fee, true, defaultSplit);
+  if (_receiptTax && _receiptTax.fee > 0) push('免稅手續費', 1, _receiptTax.fee, true, defaultSplit, 0);
   if (!out.length) { alert('沒有可儲存的品項'); return; }
   if (_receiptThumb) setThumb(out[0].id, _receiptThumb);
 
@@ -2382,7 +2405,7 @@ function confirmReceiptSave() {
 }
 function closeReceipt() {
   document.getElementById('receiptOverlay').classList.remove('open');
-  _receiptItems = []; _receiptStore = ''; _receiptTax = null; _receiptThumb = null; _receiptSplit = null;
+  _receiptItems = []; _receiptStore = ''; _receiptTax = null; _receiptThumb = null; _receiptSplit = null; _receiptWholeDiscount = 0;
 }
 
 /* ══════════════════════════════════════════════════════════
