@@ -73,6 +73,26 @@ BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
 `allow update` 保持開放（大家可以互相修正錯字金額），但規則禁止改動 `by`，
 避免有人把記錄者改成自己再刪掉。
 
+### 收據品項各自分攤
+
+`_receiptItems[i].split` 讓收據裡每個品項各自帶自己的分攤名單，不是整張收據共用
+一組。架構上不需要額外設計——每個品項存進 Firestore 後本來就是獨立一份文件，
+各自的 `split` 欄位直接就是 `computeBalances()` 的輸入，結算邏輯完全不用改，
+只需要在收據確認畫面（`receiptRows()`）替每一列加上自己的分攤 chips。
+
+- `applyReceiptResult()` / `addReceiptRow()`：新品項預設 `split = allMemberEmails()`
+- 每列的 chips 用 `data-act="itemsplit" data-idx="N"` 標記，事件委派綁在
+  `#receiptBody`（靜態存在的容器，`renderReceiptConfirm()` 只換它的 innerHTML，
+  監聽器不會因為重繪而失效）
+- 底下的「全部套用」（`#receiptSplit`，`_receiptSplit`）維持原本的通用 chip
+  委派邏輯（`data-split="receiptSplit"`），但點擊時額外把選到的名單廣播寫進
+  **每一個** `_receiptItems[i].split` 並重繪列表——它是「批次覆蓋」工具，
+  不是即時綁定的預設值，使用者手動調整過的品項再次觸發它一樣會被蓋掉，這是
+  刻意的（先套用大範圍、再處理例外）
+- `confirmReceiptSave()` 存檔時：每個品項優先用自己的 `it.split`，沒有才退回
+  `defaultSplit`（= 全部套用當下的選擇，或全員）；免稅手續費這類非品項的
+  附加費用固定用 `defaultSplit`，因為它不屬於任何單一品項
+
 ### 分帳結算
 
 `computeBalances()` 算每個人的淨額（先墊金額 − 應分攤），四捨五入的誤差補到絕對值最大的人

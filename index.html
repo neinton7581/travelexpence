@@ -668,6 +668,13 @@ button { cursor: pointer; }
   color: var(--bg); font-weight: 600;
 }
 .chips-empty { font-size: 0.7rem; color: var(--clay-deep); }
+.chip.mini { padding: 0.2rem 0.55rem; font-size: 0.68rem; }
+.receipt-item-split {
+  width: 100%; display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0.35rem; padding-left: 1.85rem; margin-top: 0.3rem;
+}
+.ris-label { font-size: 0.66rem; color: var(--ink-2); flex-shrink: 0; }
+.receipt-split-hint { font-size: 0.66rem; color: var(--ink-2); line-height: 1.6; padding-top: 0.3rem; }
 
 /* ══════════ 結算 ══════════ */
 .settle-row {
@@ -1010,9 +1017,10 @@ friend@gmail.com, 阿明"></textarea>
         <select class="f-select" id="receiptPayer"></select>
       </div>
       <div class="field-row" style="align-items:flex-start;margin-bottom:0;">
-        <span class="f-label" style="padding-top:0.3rem;">分攤</span>
+        <span class="f-label" style="padding-top:0.3rem;">全部套用</span>
         <div class="chips" id="receiptSplit"></div>
       </div>
+      <div class="receipt-split-hint">點選後套用到全部品項；下面每個品項也能單獨調整分攤對象。</div>
     </div>
     <button class="receipt-save" id="receiptSaveBtn" onclick="confirmReceiptSave()">確認儲存</button>
     <div class="receipt-note" id="receiptSaveNote">儲存後會寫入帳本</div>
@@ -1571,7 +1579,26 @@ document.addEventListener('click', function(e) {
   if (i >= 0) { if (cur.length > 1) cur.splice(i, 1); } else { cur.push(email); }
   window[ref] = cur;
   renderSplitChips(which, cur);
-  if (which === 'receiptSplit') updateReceiptSaveBtn();
+  if (which === 'receiptSplit') {
+    _receiptItems.forEach(function(it){ it.split = cur.slice(); });
+    var list = document.getElementById('receiptItemList');
+    if (list) list.innerHTML = receiptRows();
+    updateReceiptSaveBtn();
+  }
+});
+/* 品項各自的分攤 chips（在 #receiptBody 上做事件委派，畫面重繪也不會失效）*/
+document.getElementById('receiptBody').addEventListener('click', function(e) {
+  var chip = e.target.closest ? e.target.closest('.chip[data-act="itemsplit"]') : null;
+  if (!chip) return;
+  var idx = parseInt(chip.getAttribute('data-idx'), 10);
+  var email = chip.getAttribute('data-email');
+  var it = _receiptItems[idx];
+  if (!it) return;
+  var cur = (it.split && it.split.length) ? it.split.slice() : allMemberEmails();
+  var i = cur.indexOf(email);
+  if (i >= 0) { if (cur.length > 1) cur.splice(i, 1); } else { cur.push(email); }
+  it.split = cur;
+  document.getElementById('receiptItemList').innerHTML = receiptRows();
 });
 
 /* ══════════════════════════════════════════════════════════
@@ -2187,7 +2214,7 @@ function applyReceiptResult(parsed, previewUrl) {
   }).map(function(it) {
     var qty = parseInt(it.qty, 10) || 1;
     var unit = parseFloat(it.unit_price != null ? it.unit_price : it.amount) || 0;
-    return { name: String(it.name), qty: qty, unit_price: unit, amount: Math.round(qty * unit) };
+    return { name: String(it.name), qty: qty, unit_price: unit, amount: Math.round(qty * unit), split: allMemberEmails() };
   });
   var total = parseFloat(parsed.total);
   if (!isNaN(total) && total > 0 && _receiptItems.length) {
@@ -2243,7 +2270,19 @@ function receiptRows() {
     return '<div style="padding:1rem;text-align:center;color:var(--ink-2);font-size:0.8rem;">沒有辨識到品項，可手動新增</div>';
   }
   var sym = symbolOf(_receiptCurrency);
+  var showSplit = _receiptBook === 'shared' && members().length > 1;
   return _receiptItems.map(function(it, i) {
+    var splitRow = '';
+    if (showSplit) {
+      var sel = (it.split && it.split.length) ? it.split : allMemberEmails();
+      var chips = members().map(function(m) {
+        var on = sel.indexOf(m.email) >= 0;
+        return '<button type="button" class="chip mini' + (on ? ' on' : '') + '"'
+          + ' data-act="itemsplit" data-idx="' + i + '" data-email="' + escHtml(m.email) + '">'
+          + escHtml(m.name || m.email) + '</button>';
+      }).join('');
+      splitRow = '<div class="receipt-item-split"><span class="ris-label">誰的</span><div class="chips">' + chips + '</div></div>';
+    }
     return '<div class="receipt-row">'
       + '<div class="receipt-num">' + (i+1) + '</div>'
       + '<input class="receipt-name" value="' + escHtml(it.name) + '" oninput="_receiptItems[' + i + '].name=this.value">'
@@ -2253,7 +2292,9 @@ function receiptRows() {
       +   '<span style="font-size:0.75rem;color:var(--ink-2);">@ ' + escHtml(sym) + '</span>'
       +   '<input class="receipt-unit" type="number" value="' + it.unit_price + '" oninput="updateReceiptRow(' + i + ',this.value,null)">'
       +   '<span class="receipt-total" id="rtot-' + i + '">＝ ' + fmtMoney(it.amount, _receiptCurrency) + '</span>'
-      + '</div></div>';
+      + '</div>'
+      + splitRow
+      + '</div>';
   }).join('');
 }
 function updateReceiptRow(i, unit, qty) {
@@ -2270,7 +2311,7 @@ function delReceiptRow(i) {
   updateReceiptSaveBtn();
 }
 function addReceiptRow() {
-  _receiptItems.push({ name: '新品項', qty: 1, unit_price: 0, amount: 0 });
+  _receiptItems.push({ name: '新品項', qty: 1, unit_price: 0, amount: 0, split: allMemberEmails() });
   document.getElementById('receiptItemList').innerHTML = receiptRows();
   updateReceiptSaveBtn();
 }
@@ -2295,11 +2336,9 @@ function confirmReceiptSave() {
   var pay  = document.getElementById('receiptPay').value;
   var store = (_receiptStore || '').trim();
   var payer = _receiptBook === 'shared' ? (document.getElementById('receiptPayer').value || myEmail()) : null;
-  var split = _receiptBook === 'shared'
-    ? ((_receiptSplit && _receiptSplit.length) ? _receiptSplit.slice() : allMemberEmails())
-    : null;
+  var defaultSplit = (_receiptSplit && _receiptSplit.length) ? _receiptSplit.slice() : allMemberEmails();
   var out = [];
-  var push = function(name, qty, unit, isFee) {
+  var push = function(name, qty, unit, isFee, itemSplit) {
     var entry = {
       id: newId(), name: name, store: store, date: date, cat: cat, pay: pay,
       currency: _receiptCurrency, unitPrice: unit, qty: qty, amt: Math.round(unit * qty)
@@ -2309,16 +2348,16 @@ function confirmReceiptSave() {
     if (_receiptBook === 'shared') {
       entry.by = myEmail() || '';
       entry.payer = payer;
-      entry.split = split;
+      entry.split = (itemSplit && itemSplit.length) ? itemSplit.slice() : defaultSplit;
     }
     out.push(entry);
   };
   _receiptItems.forEach(function(it) {
     var name = (it.name || '').trim();
     if (!name) return;
-    push(name, it.qty || 1, it.unit_price || 0, false);
+    push(name, it.qty || 1, it.unit_price || 0, false, it.split);
   });
-  if (_receiptTax && _receiptTax.fee > 0) push('免稅手續費', 1, _receiptTax.fee, true);
+  if (_receiptTax && _receiptTax.fee > 0) push('免稅手續費', 1, _receiptTax.fee, true, defaultSplit);
   if (!out.length) { alert('沒有可儲存的品項'); return; }
   if (_receiptThumb) setThumb(out[0].id, _receiptThumb);
 
