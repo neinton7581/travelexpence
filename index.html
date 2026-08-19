@@ -2146,7 +2146,7 @@ function handleReceiptScan(event) {
 function receiptPrompt() {
   return [
     '這是一張商店收據的照片。請仔細辨識，並以純 JSON 格式回傳（不可包含 markdown、程式碼區塊符號或任何說明文字，只回傳 JSON 物件本身）：',
-    '{"store":"店名（看不出來填 unknown）","date":"日期，格式 YYYY-MM-DD；若收據只寫月日，年份填今年（' + new Date().getFullYear() + '）；完全看不到填 null","currency":"貨幣代碼（如 JPY、TWD、KRW、USD、EUR；看不出來填 null）","total":顧客最終實際支付的金額數字（看收據最下方的合計／総計／支払／TOTAL 欄位，不含貨幣符號；看不到填 null）,"is_tax_free":布林值,"tax_rate_type":"只能填：免稅、標準稅率、減輕稅率、混合稅率、不明 其中之一","tax_amount":稅金數字（免稅填 0；不明填 null）,"tax_free_fee":免稅手續費／TaxFreeFee 金額數字（沒有填 0）,"items":[{"name":"品項名稱（翻成繁體中文，保持簡短）","qty":數量整數（預設 1）,"unit_price":折扣後的每件單價數字,"amount":折扣後的小計數字（unit_price×qty）,"discount":這個品項被折抵掉的金額數字（沒有折扣填 0）}]}',
+    '{"store":"店名（看不出來填 unknown）","date":"日期，格式 YYYY-MM-DD；若收據只寫月日，年份填今年（' + new Date().getFullYear() + '）；完全看不到填 null","currency":"貨幣代碼（如 JPY、TWD、KRW、USD、EUR；看不出來填 null）","total":顧客最終實際支付、刷卡或收銀機列印的那一筆金額數字（通常緊接在 クレジット支払／現金支払／お預り／TOTAL／PAID 這類付款方式旁邊、印在收據最下方；如果同一張收據出現多個寫著「合計」的行，優先選最下面、跟付款方式對在一起的那個，不要選標示「税抜」「小計」「稅前」等字樣、只是計算過程中間值的合計行，那些不是顧客實際付的錢；不含貨幣符號；看不到填 null）,"is_tax_free":布林值,"tax_rate_type":"只能填：免稅、標準稅率、減輕稅率、混合稅率、不明 其中之一","tax_amount":稅金數字（免稅填 0；不明填 null）,"tax_free_fee":「顧客最終支付金額」比「品項小計」多出來的免稅相關費用總和數字（包含 TaxFreeFee／免稅手續費，也包含完成免稅折抵後另外加收的少量殘值消費稅／消費税等——這類小額殘值請直接併入這裡一起加總，不要當成商品；沒有這類額外費用就填 0）,"items":[{"name":"品項名稱（翻成繁體中文，保持簡短）","qty":數量整數（預設 1）,"unit_price":折扣後的每件單價數字,"amount":折扣後的小計數字（unit_price×qty）,"discount":這個品項被折抵掉的金額數字（沒有折扣填 0）}]}',
     '',
     '【絕對不可列入 items 的行】以下都不是商品，不得出現在 items 陣列：',
     '・TaxFreeFee／免稅手續費',
@@ -2237,19 +2237,27 @@ function applyReceiptResult(parsed, previewUrl) {
              discount: discount > 0 ? discount : 0, split: allMemberEmails() };
   });
   var total = parseFloat(parsed.total);
+  var fee = parseFloat(parsed.tax_free_fee) || 0;
   _receiptWholeDiscount = 0;
   if (!isNaN(total) && total > 0 && _receiptItems.length) {
     var sum = _receiptItems.reduce(function(s, it){ return s + it.amount; }, 0);
     var isFree = !!parsed.is_tax_free;
-    if (sum > 0 && Math.abs(sum - total) / total > 0.01 && (!isFree || sum > total)) {
-      var scale = total / sum;
-      if (scale < 1) _receiptWholeDiscount = sum - total;  // 品項比折扣後總額多出來的部分＝整單折扣
-      _receiptItems.forEach(function(it) {
-        var newAmount = Math.round(it.amount * scale);
-        if (scale < 1) it.discount = (it.discount || 0) + (it.amount - newAmount);
-        it.amount = newAmount;
-        it.unit_price = Math.round(it.amount / (it.qty || 1));
-      });
+    var target = total - fee;  // 免稅手續費是另外收的固定費用，品項要對齊的是扣掉它之後的金額
+    if (target > 0 && sum > 0) {
+      var gapRatio = Math.abs(sum - target) / target;
+      // 免稅收據原則上只允許縮小（品項可能還沒扣退稅），但落差很小（≤3%）時，
+      // 通常只是收據上另外印出的零頭消費稅殘值，允許往上補齊，不然那筆錢會憑空消失
+      var allowUp = !isFree || gapRatio <= 0.03;
+      if (gapRatio > 0.01 && (sum > target || allowUp)) {
+        var scale = target / sum;
+        if (scale < 1) _receiptWholeDiscount = sum - target;  // 品項比折扣後總額多出來的部分＝整單折扣
+        _receiptItems.forEach(function(it) {
+          var newAmount = Math.round(it.amount * scale);
+          if (scale < 1) it.discount = (it.discount || 0) + (it.amount - newAmount);
+          it.amount = newAmount;
+          it.unit_price = Math.round(it.amount / (it.qty || 1));
+        });
+      }
     }
   }
   var cur = (parsed.currency || '').toUpperCase();
