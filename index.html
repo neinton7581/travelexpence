@@ -2458,23 +2458,46 @@ function computeBalances() {
   if (maxKey && sum !== 0) rounded[maxKey] -= sum;
   return rounded;
 }
-function computeTransfers(bal) {
-  var creditors = [], debtors = [];
-  Object.keys(bal).forEach(function(k) {
-    if (bal[k] > 0) creditors.push({ e: k, v: bal[k] });
-    else if (bal[k] < 0) debtors.push({ e: k, v: -bal[k] });
-  });
-  creditors.sort(function(a, b){ return b.v - a.v; });
-  debtors.sort(function(a, b){ return b.v - a.v; });
-  var out = [], i = 0, j = 0;
-  while (i < debtors.length && j < creditors.length) {
-    var amt = Math.min(debtors[i].v, creditors[j].v);
-    if (amt > 0) out.push({ from: debtors[i].e, to: creditors[j].e, amt: amt });
-    debtors[i].v -= amt; creditors[j].v -= amt;
-    if (debtors[i].v <= 0) i++;
-    if (creditors[j].v <= 0) j++;
+/* 兩兩之間各自的欠款——保留「誰幫誰代墊」的對應關係，只在同一組兩人之間互相
+   沖銷（例如這次換你幫他代墊了一筆，抵掉一部分他之前幫你墊的），不會為了讓
+   轉帳次數最少，就讓這筆債務改流向完全不相干的第三個人。
+   代價是轉帳筆數不會是理論最少：同一個人可能要分別付給好幾個代墊過東西的人，
+   不會被自動合併成一筆付給墊最多錢的那個人。 */
+function computePairwiseDebts() {
+  var debt = {};  // debt[消費者][代墊人] = 積欠金額
+  function add(consumer, payer, amt) {
+    if (!consumer || !payer || consumer === payer || amt <= 0) return;
+    if (!debt[consumer]) debt[consumer] = {};
+    debt[consumer][payer] = (debt[consumer][payer] || 0) + amt;
   }
-  return out;
+  itemsOf('shared').forEach(function(it) {
+    var amt = toHome(it);
+    if (!amt) return;
+    var payer = it.payer || it.by || '';
+    if (!payer) return;
+    var split = (it.split && it.split.length) ? it.split : allMemberEmails();
+    if (!split.length) return;
+    var share = amt / split.length;
+    split.forEach(function(consumer) { add(consumer, payer, share); });
+  });
+  return debt;
+}
+function computePairwiseTransfers() {
+  var debt = computePairwiseDebts();
+  var seen = {}, out = [];
+  Object.keys(debt).forEach(function(a) {
+    Object.keys(debt[a]).forEach(function(b) {
+      var key = a < b ? (a + '|' + b) : (b + '|' + a);
+      if (seen[key]) return;
+      seen[key] = true;
+      var ab = (debt[a] && debt[a][b]) || 0;   // a 欠 b 多少
+      var ba = (debt[b] && debt[b][a]) || 0;   // b 欠 a 多少
+      var net = Math.round(ab - ba);           // 同一組兩人互相沖銷
+      if (net > 0) out.push({ from: a, to: b, amt: net });
+      else if (net < 0) out.push({ from: b, to: a, amt: -net });
+    });
+  });
+  return out.sort(function(x, y){ return y.amt - x.amt; });
 }
 function paidByPerson() {
   var map = {};
@@ -2493,7 +2516,7 @@ function renderSettlement() {
       + (isAdmin() ? '請到 ⚙️ 設定 → 同行成員 加入大家的 Email。' : '請管理員設定成員名單。') + '</div></div>';
   }
   var bal = computeBalances();
-  var transfers = computeTransfers(bal);
+  var transfers = computePairwiseTransfers();
   var me = myEmail();
   var mine = me ? transfers.filter(function(t){ return t.from === me || t.to === me; }) : [];
 
@@ -2537,7 +2560,8 @@ function renderSettlement() {
     });
   }
   html += '<div style="font-size: 0.7rem;color:var(--ink-2);margin-top:0.6rem;line-height:1.6;">'
-    + '轉帳筆數已最小化：把每個人的淨額互相抵銷後，用最少的次數還清。</div></div></div>';
+    + '每筆消費各自算給實際代墊的人，不會因為別人墊得比較多，就把這筆錢改算給他。'
+    + '</div></div></div>';
 
   // 每人先墊了多少
   var paidList = paidByPerson();
