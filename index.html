@@ -687,6 +687,10 @@ button { cursor: pointer; }
 .settle-dir { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 6px; white-space: nowrap; }
 .settle-dir.pay { background: rgba(164,99,92,0.14); color: var(--red); }
 .settle-dir.get { background: rgba(95,125,99,0.16); color: var(--green); }
+.settle-group { margin-bottom: 0.3rem; }
+.settle-group + .settle-group { margin-top: 0.2rem; padding-top: 0.5rem; border-top: 1px dashed rgba(87,111,114,0.15); }
+.settle-group-hd { display: flex; align-items: center; justify-content: space-between; padding-bottom: 0.15rem; }
+.settle-group-sub { font-size: 0.72rem; color: var(--ink-2); font-weight: 600; }
 .settle-who { flex: 1; color: var(--ink); }
 .settle-amt { font-weight: 700; color: var(--accent-deep); }
 .settle-net {
@@ -2536,13 +2540,27 @@ function renderSettlement() {
     if (!mine.length) {
       html += '<div style="font-size:0.8rem;color:var(--ink-2);padding:0.4rem 0;">目前你跟大家兩不相欠 🎉</div>';
     } else {
-      mine.forEach(function(t) {
-        var pay = t.from === me;
-        html += '<div class="settle-row">'
-          + '<span class="settle-dir ' + (pay ? 'pay' : 'get') + '">' + (pay ? '你要付' : '要付你') + '</span>'
-          + '<span class="settle-who">' + escHtml(memberName(pay ? t.to : t.from)) + '</span>'
-          + '<span class="settle-amt">' + fmtMoney(t.amt, S.homeCode) + '</span></div>';
-      });
+      // 分成兩組顯示，不要照金額大小把「要付你」跟「你要付」混在一起排：
+      // 綠色（別人要付你）排一起，紅色（你要付別人）排一起，各自加小計
+      var owedToMe = mine.filter(function(t){ return t.to === me; })
+        .sort(function(a,b){ return b.amt - a.amt; });
+      var iOwe = mine.filter(function(t){ return t.from === me; })
+        .sort(function(a,b){ return b.amt - a.amt; });
+      var renderGroup = function(list, dirClass, dirLabel, subtotalLabel, otherOf) {
+        if (!list.length) return '';
+        var sub = list.reduce(function(s, t){ return s + t.amt; }, 0);
+        var out = '<div class="settle-group">'
+          + '<div class="settle-group-hd"><span class="settle-dir ' + dirClass + '">' + dirLabel + '</span>'
+          + '<span class="settle-group-sub">' + subtotalLabel + ' ' + fmtMoney(sub, S.homeCode) + '</span></div>';
+        list.forEach(function(t) {
+          out += '<div class="settle-row">'
+            + '<span class="settle-who">' + escHtml(memberName(otherOf(t))) + '</span>'
+            + '<span class="settle-amt">' + fmtMoney(t.amt, S.homeCode) + '</span></div>';
+        });
+        return out + '</div>';
+      };
+      html += renderGroup(owedToMe, 'get', '要付你', '共', function(t){ return t.from; });
+      html += renderGroup(iOwe, 'pay', '你要付', '共', function(t){ return t.to; });
     }
   } else {
     html += '<div style="font-size:0.8rem;color:var(--ink-2);">登入後這裡會顯示你要付給誰、誰要付你。</div>';

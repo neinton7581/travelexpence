@@ -4,7 +4,7 @@
 //  改動 index.html 後請把 CACHE_NAME 的版本號 +1，使用者才會收到更新提示
 // ============================================================
 
-const CACHE_NAME = 'travel-ledger-v16';
+const CACHE_NAME = 'travel-ledger-v17';
 
 const PRECACHE_URLS = [
   './',
