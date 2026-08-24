@@ -210,18 +210,25 @@ B 的淨額比較大，演算法優先配對大額的），A 墊的那筆錢憑�
 
 ```js
 repayment = {
-  id, from, to,       // from 付給 to（Email）
-  amt,                 // 一律以 S.homeCode 記錄，不像消費項目有 currency/rate
+  id, from, to,        // from 付給 to（Email）
+  amt, currency, rate,  // 跟消費項目同一套：amt 是輸入當下那個幣別的金額，
+                         // currency 不是主要幣別時才會有 rate（記帳當下的匯率）
   date, note,
   by, createdAt         // by = 記錄者，決定刪除權限（跟 canDelete() 同一套邏輯，見 canDeleteRepay()）
 }
 ```
 
-還款怎麼併進結算計算：把一筆還款當成「`payer = from`、`split = [to]` 的合成消費」
-直接套用同一套加總邏輯，不要另外發明新公式：
+**還款金額跟消費項目一樣可以用外幣輸入**（`repayCurBtn` / `_repayCurrency` / `toggleRepayCurrency()`，
+複用 `updateCurrencyButtons()` 裡跟 `fCurBtn`／`receiptCurBtn`同一套邏輯與預設值＝外幣），因為
+還款當下人可能還在日本、直接付日圓現金給對方。正因為資料形狀跟消費項目一致（`amt`／`currency`／`rate`
+三欄同名同義），算錢時直接呼叫現成的 `toHome(r)` 換算成主要幣別即可，不要自己另外寫 `+r.amt` 之類
+假設「金額已經是主要幣別」的算法。
 
-- `computeBalances()`：`bal[from] += amt; bal[to] -= amt;`
-- `computePairwiseDebts()`：`add(to, from, amt)`（沖銷 `to` 欠 `from` 的方向）
+還款怎麼併進結算計算：把一筆還款當成「`payer = from`、`split = [to]` 的合成消費」
+直接套用同一套加總邏輯，不要另外發明新公式（用的是 `toHome(r)` 之後的主要幣別金額）：
+
+- `computeBalances()`：`bal[from] += toHome(r); bal[to] -= toHome(r);`
+- `computePairwiseDebts()`：`add(to, from, toHome(r))`（沖銷 `to` 欠 `from` 的方向）
 
 這樣可以直接沿用既有、已經驗證過「pairwise 總和等於全域淨額」的不變量，不用
 重新證一次——因為結構上就是同一種運算，只是資料來源從 `itemsOf('shared')`

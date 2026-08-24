@@ -1107,6 +1107,7 @@ friend@gmail.com, 阿明"></textarea>
   <div class="sheet-row">
     <label>金額</label>
     <input type="number" id="repayAmt" inputmode="decimal" min="0">
+    <button class="cur-btn" id="repayCurBtn" onclick="toggleRepayCurrency()">¥ JPY</button>
   </div>
   <div class="sheet-row">
     <label>日期</label>
@@ -1143,7 +1144,7 @@ friend@gmail.com, 阿明"></textarea>
    沒設定 Firebase 或沒登入時，只有個人帳可用（純本機 localStorage）。
    ══════════════════════════════════════════════════════════ */
 
-var APP_VERSION = 'v2.1.0';
+var APP_VERSION = 'v2.1.1';
 
 /* ── 管理員：只有這些帳號能改設定（要與 Firestore 規則裡的名單一致）── */
 var ADMIN_EMAILS = ['neinton7581@gmail.com'];
@@ -1197,6 +1198,7 @@ var currentBook = 'me';
 var openGroups = {};
 var _firstRender = { me: true, shared: true };
 var _statsCurrency = null;   // 統計頁目前顯示的幣別（S.homeCode / S.foreignCode），null 表示還沒初始化
+var _repayCurrency = null;   // 還款表單目前選的輸入幣別
 
 /* ══════════════════════════════════════════════════════════
    小工具
@@ -1666,9 +1668,22 @@ function updateCurrencyButtons() {
     rbtn.textContent = symbolOf(_receiptCurrency).trim() + ' ' + _receiptCurrency;
     rbtn.classList.toggle('home', _receiptCurrency === S.homeCode);
   }
+
+  if (!_repayCurrency || (_repayCurrency !== S.homeCode && _repayCurrency !== S.foreignCode)) _repayCurrency = S.foreignCode;
+  var pbtn = document.getElementById('repayCurBtn');
+  if (pbtn) {
+    pbtn.textContent = symbolOf(_repayCurrency).trim() + ' ' + _repayCurrency;
+    pbtn.classList.toggle('home', _repayCurrency === S.homeCode);
+  }
+  var repayAmtEl = document.getElementById('repayAmt');
+  if (repayAmtEl) repayAmtEl.placeholder = '金額（' + _repayCurrency + '）';
 }
 function toggleFormCurrency() {
   _formCurrency = (_formCurrency === S.foreignCode) ? S.homeCode : S.foreignCode;
+  updateCurrencyButtons();
+}
+function toggleRepayCurrency() {
+  _repayCurrency = (_repayCurrency === S.foreignCode) ? S.homeCode : S.foreignCode;
   updateCurrencyButtons();
 }
 function setTaxBtn(btn, state) {
@@ -2495,7 +2510,7 @@ function computeBalances() {
   // 還款：等同一筆「from 全額支付、只有 to 一個人分攤」的消費，
   // 讓 from 的淨額往正的方向調整、to 往負的方向調整，跟真的還了錢的效果一樣
   itemsOf('repay').forEach(function(r) {
-    var amt = Math.round(+r.amt || 0);
+    var amt = toHome(r);
     if (!amt || !r.from || !r.to || r.from === r.to) return;
     touch(r.from); touch(r.to);
     bal[r.from] += amt;
@@ -2550,7 +2565,7 @@ function computePairwiseDebts() {
   // 還款：用同一組 add(consumer, payer, amt)，把 to 當消費者、from 當代墊人，
   // 剛好沖銷原本 to 欠 from 的錢（或反過來，讓 from 變成欠 to，效果一樣正確）
   itemsOf('repay').forEach(function(r) {
-    var amt = Math.round(+r.amt || 0);
+    var amt = toHome(r);
     if (!amt || !r.from || !r.to) return;
     add(r.to, r.from, amt);
   });
@@ -2613,7 +2628,7 @@ function openRepayModal() {
     toSel.selectedIndex = (toSel.selectedIndex + 1) % toSel.options.length;
   }
   document.getElementById('repayAmt').value = '';
-  document.getElementById('repayAmt').placeholder = '金額（' + S.homeCode + '）';
+  updateCurrencyButtons();
   document.getElementById('repayDate').value = todayStr();
   document.getElementById('repayNote').value = '';
   document.getElementById('repayOverlay').classList.add('open');
@@ -2632,7 +2647,9 @@ function saveRepay() {
   if (!from || !to) { alert('請選擇付款人與收款人'); return; }
   if (from === to) { alert('付款人與收款人不能是同一個人'); return; }
   if (!amt || amt <= 0) { alert('請輸入還款金額'); return; }
-  var rec = { id: newId(), from: from, to: to, amt: amt, date: date, note: note, by: myEmail() || from, createdAt: Date.now() };
+  var cur = _repayCurrency || S.homeCode;
+  var rec = { id: newId(), from: from, to: to, amt: amt, currency: cur, date: date, note: note, by: myEmail() || from, createdAt: Date.now() };
+  if (cur !== S.homeCode) rec.rate = S.rate;
   putItems('repay', [rec]);
   closeRepayModal();
   renderStats();
@@ -2649,11 +2666,14 @@ function renderRepayHistory() {
   if (!repays.length) return '';
   var html = '<div class="stat-card"><div class="stat-card-title">🧾 還款紀錄</div>';
   repays.forEach(function(r) {
+    var isHome = !r.currency || r.currency === S.homeCode;
     html += '<div class="settle-row">'
       + '<span class="settle-who">' + escHtml(dateLabel(r.date)) + '　' + escHtml(memberName(r.from)) + ' → ' + escHtml(memberName(r.to))
       + (r.note ? '<br><span style="font-size:0.68rem;color:var(--ink-2);">' + escHtml(r.note) + '</span>' : '')
       + '</span>'
-      + '<span class="settle-amt">' + fmtStat(r.amt) + '</span>'
+      + '<span class="settle-amt">' + fmtStat(toHome(r))
+      + (isHome ? '' : '<br><span style="font-size:0.66rem;font-weight:400;color:var(--ink-2);">' + fmtMoney(r.amt, r.currency) + '</span>')
+      + '</span>'
       + (canDeleteRepay(r) ? '<button class="del-btn" onclick="deleteRepay(\'' + escHtml(r.id) + '\')" title="刪除">✕</button>' : '')
       + '</div>';
   });
