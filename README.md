@@ -112,6 +112,20 @@ service cloud.firestore {
                         || resource.data.get('by', '').lower() == myEmail());
     }
 
+    // 還款紀錄（提前償還部分欠款用）
+    match /shared_repayments/{item} {
+      allow read: if signedIn();
+
+      // 只能以自己的身分新增
+      allow create: if signedIn()
+                    && request.resource.data.get('by', '').lower() == myEmail();
+
+      // 只有記錄這筆的人可以刪除
+      allow delete: if signedIn()
+                    && (resource.data.get('by', '') == ''
+                        || resource.data.get('by', '').lower() == myEmail());
+    }
+
     // 個人帳：只有本人，其他人連讀都不行
     match /users/{uid}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == uid;
@@ -214,8 +228,31 @@ service cloud.firestore {
 ```
 
 淨額為正表示你墊多了，別人要還你；為負表示你欠別人。
-系統把所有人的淨額互相抵銷後，用**最少的轉帳次數**排出「誰付給誰多少」，
-統計頁預設只顯示跟你有關的那幾筆，要看全部可以展開。
+統計頁預設只顯示跟你有關的那幾筆（分成綠色「要付你」跟紅色「你要付」兩組），
+要看全部人的結算可以展開「看所有人的結算」。
+
+「應分攤」是你這趟消費本來就該負責的份額，不會因為你還了誰錢就跟著變動；
+「淨額」則是目前真正的欠款狀態，還款之後會直接反映出來（詳見下方「提前還款」）。
+
+## 提前還款
+
+分帳結算卡片裡有一顆「💸 記一筆還款」，可以記錄某人直接付現金給另一個人、
+提前結清部分或全部欠款。填付款人、收款人、金額、日期跟備註即可，金額一律以
+主要幣別（`S.homeCode`）輸入。
+
+還款會被當成「這兩人之間」的一筆對沖，只影響這兩人之間的欠款，不會被錯算
+成欠給別人。存進去之後，欠款淨額、要付你／你要付的清單都會立刻依還款金額
+調整；如果剛好把某兩人之間的欠款全部還清，那筆轉帳就會從清單上消失。
+
+還款紀錄會列在分帳結算下方，跟公帳消費一樣，**只有記錄這筆的人能刪除**——
+刪掉之後淨額會恢復成還款前的狀態。
+
+## 消費統計的幣別切換
+
+消費統計最上方有一顆幣別切換鈕，可以把整頁（總支出、分類、結算、每日支出等）
+的顯示幣別在主要幣別／外幣之間切換，方便回台灣後用台幣看，或想確認日圓實際
+金額時切過去看。這**只影響顯示**，用的是目前設定的匯率換算，不會改到任何存
+好的記錄——每筆記錄實際用的匯率還是記帳當下鎖定的那個。
 
 ## 檔案
 
@@ -239,8 +276,10 @@ icon-maskable.png   Android maskable 圖示
 |---|---|
 | Firestore `users/{uid}/items/*` | 個人帳（一筆消費一份文件）|
 | Firestore `shared_items/*` | 公帳 |
+| Firestore `shared_repayments/*` | 還款紀錄 |
 | Firestore `config/app` | 幣別、匯率、分類、付款方式、成員名單、Gemini Key |
 | localStorage `ledger_items_me` / `ledger_items_shared` | 兩本帳的本機鏡像（離線可用）|
+| localStorage `ledger_repayments` | 還款紀錄的本機鏡像 |
 | localStorage `ledger_settings` | 設定的本機快取 |
 | localStorage `ledger_thumbs` | 收據縮圖（**只存本機**，不進雲端）|
 

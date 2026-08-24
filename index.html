@@ -704,6 +704,14 @@ button { cursor: pointer; }
   border: 1px solid var(--line); background: rgba(87,111,114,0.05);
   font-size: 0.75rem; color: var(--ink-2);
 }
+.settle-repay-btn {
+  width: 100%; margin-top: 0.7rem; padding: 0.6rem; border-radius: 9px; border: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #f0ebe3; font-size: 0.8rem; font-weight: 700;
+}
+
+/* ══════════ 統計頁幣別切換 ══════════ */
+.stats-cur-row { display: flex; justify-content: flex-end; margin-bottom: 0.6rem; }
 </style>
 </head>
 <body>
@@ -1084,6 +1092,36 @@ friend@gmail.com, 阿明"></textarea>
   </div>
 </div>
 
+<!-- ══════════ 還款 ══════════ -->
+<div class="sheet-overlay" id="repayOverlay" onclick="closeRepayModal()"></div>
+<div class="sheet" id="repaySheet">
+  <div class="sheet-title">💸 記一筆還款</div>
+  <div class="sheet-row">
+    <label>付款人</label>
+    <select id="repayFrom"></select>
+  </div>
+  <div class="sheet-row">
+    <label>收款人</label>
+    <select id="repayTo"></select>
+  </div>
+  <div class="sheet-row">
+    <label>金額</label>
+    <input type="number" id="repayAmt" inputmode="decimal" min="0">
+  </div>
+  <div class="sheet-row">
+    <label>日期</label>
+    <input type="date" id="repayDate" style="flex:1;padding:0.5rem 0.6rem;border:1px solid rgba(87,111,114,0.3);border-radius:8px;font-size:0.9rem;outline:none;">
+  </div>
+  <div class="sheet-row">
+    <label>備註</label>
+    <input type="text" id="repayNote" placeholder="選填">
+  </div>
+  <div class="sheet-actions">
+    <button class="sheet-cancel" onclick="closeRepayModal()">取消</button>
+    <button class="sheet-save" onclick="saveRepay()">儲存</button>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <button class="lightbox-close" onclick="closeLightbox()">✕</button>
   <img id="lightboxImg" src="" alt="">
@@ -1105,7 +1143,7 @@ friend@gmail.com, 阿明"></textarea>
    沒設定 Firebase 或沒登入時，只有個人帳可用（純本機 localStorage）。
    ══════════════════════════════════════════════════════════ */
 
-var APP_VERSION = 'v2.0.0';
+var APP_VERSION = 'v2.1.0';
 
 /* ── 管理員：只有這些帳號能改設定（要與 Firestore 規則裡的名單一致）── */
 var ADMIN_EMAILS = ['neinton7581@gmail.com'];
@@ -1134,6 +1172,7 @@ var DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 var LS = {
   me:       'ledger_items_me',
   shared:   'ledger_items_shared',
+  repay:    'ledger_repayments',
   settings: 'ledger_settings',
   thumbs:   'ledger_thumbs',
   book:     'ledger_book',
@@ -1153,10 +1192,11 @@ var DEFAULT_SETTINGS = {
 };
 
 var S = null;                        // 目前設定
-var BOOKS = { me: [], shared: [] };  // 兩本帳的記錄
+var BOOKS = { me: [], shared: [], repay: [] };  // 兩本帳的記錄 + 還款紀錄
 var currentBook = 'me';
 var openGroups = {};
 var _firstRender = { me: true, shared: true };
+var _statsCurrency = null;   // 統計頁目前顯示的幣別（S.homeCode / S.foreignCode），null 表示還沒初始化
 
 /* ══════════════════════════════════════════════════════════
    小工具
@@ -1435,16 +1475,16 @@ function persistLocal(book) {
   catch(e) { alert('本機儲存空間已滿，請到設定匯出備份後清理舊資料。'); }
 }
 function loadLocalBooks() {
-  ['me','shared'].forEach(function(b) {
+  ['me','shared','repay'].forEach(function(b) {
     try { BOOKS[b] = JSON.parse(localStorage.getItem(LS[b]) || '[]'); } catch(e) { BOOKS[b] = []; }
     if (!Array.isArray(BOOKS[b])) BOOKS[b] = [];
   });
 }
 function colFor(book) {
   if (!FB.ready || !FB.authed) return null;
-  return book === 'shared'
-    ? FB.db.collection('shared_items')
-    : FB.db.collection('users').doc(FB.uid).collection('items');
+  if (book === 'shared') return FB.db.collection('shared_items');
+  if (book === 'repay')  return FB.db.collection('shared_repayments');
+  return FB.db.collection('users').doc(FB.uid).collection('items');
 }
 function putItems(book, arr) {
   var list = itemsOf(book);
@@ -2452,6 +2492,16 @@ function computeBalances() {
     split.forEach(function(e) { touch(e); bal[e] -= share; });
   });
 
+  // 還款：等同一筆「from 全額支付、只有 to 一個人分攤」的消費，
+  // 讓 from 的淨額往正的方向調整、to 往負的方向調整，跟真的還了錢的效果一樣
+  itemsOf('repay').forEach(function(r) {
+    var amt = Math.round(+r.amt || 0);
+    if (!amt || !r.from || !r.to || r.from === r.to) return;
+    touch(r.from); touch(r.to);
+    bal[r.from] += amt;
+    bal[r.to]   -= amt;
+  });
+
   // 四捨五入後把誤差補到絕對值最大的人身上，確保總和為 0
   var rounded = {}, sum = 0, maxKey = null, maxAbs = -1;
   Object.keys(bal).forEach(function(k) {
@@ -2461,6 +2511,19 @@ function computeBalances() {
   });
   if (maxKey && sum !== 0) rounded[maxKey] -= sum;
   return rounded;
+}
+/* 你應分攤的消費總額——只看公帳消費本身，不受還款影響，
+   還了多少錢不會改變「這趟花費原本就該由你負責的份額」*/
+function myShareTotal(email) {
+  var total = 0;
+  itemsOf('shared').forEach(function(it) {
+    var amt = toHome(it);
+    if (!amt) return;
+    var split = (it.split && it.split.length) ? it.split : allMemberEmails();
+    if (!split.length || split.indexOf(email) < 0) return;
+    total += amt / split.length;
+  });
+  return Math.round(total);
 }
 /* 兩兩之間各自的欠款——保留「誰幫誰代墊」的對應關係，只在同一組兩人之間互相
    沖銷（例如這次換你幫他代墊了一筆，抵掉一部分他之前幫你墊的），不會為了讓
@@ -2483,6 +2546,13 @@ function computePairwiseDebts() {
     if (!split.length) return;
     var share = amt / split.length;
     split.forEach(function(consumer) { add(consumer, payer, share); });
+  });
+  // 還款：用同一組 add(consumer, payer, amt)，把 to 當消費者、from 當代墊人，
+  // 剛好沖銷原本 to 欠 from 的錢（或反過來，讓 from 變成欠 to，效果一樣正確）
+  itemsOf('repay').forEach(function(r) {
+    var amt = Math.round(+r.amt || 0);
+    if (!amt || !r.from || !r.to) return;
+    add(r.to, r.from, amt);
   });
   return debt;
 }
@@ -2513,6 +2583,83 @@ function paidByPerson() {
   return Object.keys(map).map(function(k){ return { name: memberName(k), email: k, amt: map[k] }; })
     .sort(function(a, b){ return b.amt - a.amt; });
 }
+
+/* ── 統計頁的幣別切換：只影響顯示，不動任何存好的資料 ── */
+function statsDisplayAmt(homeAmt) {
+  if (_statsCurrency === S.foreignCode) return (homeAmt || 0) / (S.rate || 1);
+  return homeAmt;
+}
+function fmtStat(homeAmt) { return fmtMoney(statsDisplayAmt(homeAmt), _statsCurrency); }
+function toggleStatsCurrency() {
+  _statsCurrency = (_statsCurrency === S.foreignCode) ? S.homeCode : S.foreignCode;
+  renderStats();
+}
+
+/* ── 還款紀錄：從一個人直接付現金給另一個人，用來提前結清部分欠款 ── */
+function canDeleteRepay(r) {
+  if (!r) return false;
+  var by = String(r.by || '').toLowerCase();
+  if (!by) return true;
+  return by === String(myEmail() || '').toLowerCase();
+}
+function openRepayModal() {
+  if (!myEmail()) { alert('請先登入才能記錄還款。'); return; }
+  if (members().length < 2) { alert('至少要有兩位同行成員才能記錄還款。'); return; }
+  fillMemberSelect('repayFrom', true);
+  fillMemberSelect('repayTo', true);
+  var fromSel = document.getElementById('repayFrom');
+  var toSel = document.getElementById('repayTo');
+  if (toSel && fromSel && toSel.value === fromSel.value && toSel.options.length > 1) {
+    toSel.selectedIndex = (toSel.selectedIndex + 1) % toSel.options.length;
+  }
+  document.getElementById('repayAmt').value = '';
+  document.getElementById('repayAmt').placeholder = '金額（' + S.homeCode + '）';
+  document.getElementById('repayDate').value = todayStr();
+  document.getElementById('repayNote').value = '';
+  document.getElementById('repayOverlay').classList.add('open');
+  document.getElementById('repaySheet').classList.add('open');
+}
+function closeRepayModal() {
+  document.getElementById('repayOverlay').classList.remove('open');
+  document.getElementById('repaySheet').classList.remove('open');
+}
+function saveRepay() {
+  var from = document.getElementById('repayFrom').value;
+  var to = document.getElementById('repayTo').value;
+  var amt = Math.round(parseFloat(document.getElementById('repayAmt').value) || 0);
+  var date = document.getElementById('repayDate').value || todayStr();
+  var note = document.getElementById('repayNote').value.trim();
+  if (!from || !to) { alert('請選擇付款人與收款人'); return; }
+  if (from === to) { alert('付款人與收款人不能是同一個人'); return; }
+  if (!amt || amt <= 0) { alert('請輸入還款金額'); return; }
+  var rec = { id: newId(), from: from, to: to, amt: amt, date: date, note: note, by: myEmail() || from, createdAt: Date.now() };
+  putItems('repay', [rec]);
+  closeRepayModal();
+  renderStats();
+}
+function deleteRepay(id) {
+  var r = itemsOf('repay').filter(function(x){ return String(x.id) === String(id); })[0];
+  if (!r || !canDeleteRepay(r)) return;
+  if (!confirm('確定要刪除這筆還款紀錄嗎？刪除後欠款淨額會恢復成還款前的狀態。')) return;
+  dropItems('repay', [String(id)]);
+  renderStats();
+}
+function renderRepayHistory() {
+  var repays = itemsOf('repay').slice().sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
+  if (!repays.length) return '';
+  var html = '<div class="stat-card"><div class="stat-card-title">🧾 還款紀錄</div>';
+  repays.forEach(function(r) {
+    html += '<div class="settle-row">'
+      + '<span class="settle-who">' + escHtml(dateLabel(r.date)) + '　' + escHtml(memberName(r.from)) + ' → ' + escHtml(memberName(r.to))
+      + (r.note ? '<br><span style="font-size:0.68rem;color:var(--ink-2);">' + escHtml(r.note) + '</span>' : '')
+      + '</span>'
+      + '<span class="settle-amt">' + fmtStat(r.amt) + '</span>'
+      + (canDeleteRepay(r) ? '<button class="del-btn" onclick="deleteRepay(\'' + escHtml(r.id) + '\')" title="刪除">✕</button>' : '')
+      + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
 function renderSettlement() {
   if (!members().length) {
     return '<div class="stat-card"><div class="stat-card-title">🤝 分帳結算</div>'
@@ -2529,12 +2676,13 @@ function renderSettlement() {
   if (me && bal[me] !== undefined) {
     var net = bal[me];
     var paid = itemsOf('shared').reduce(function(s, it){ return s + ((it.payer || it.by) === me ? toHome(it) : 0); }, 0);
+    var share = myShareTotal(me);
     html += '<div class="settle-net">'
       + '<div><div class="settle-sub">你的淨額</div>'
       + '<div class="settle-net-num" style="color:' + (net >= 0 ? 'var(--green)' : 'var(--red)') + ';">'
-      +   (net >= 0 ? '＋' : '−') + fmtMoney(Math.abs(net), S.homeCode).replace('−','') + '</div></div>'
-      + '<div style="text-align:right;" class="settle-sub">你先墊了 ' + fmtMoney(paid, S.homeCode) + '<br>'
-      +   '應分攤 ' + fmtMoney(paid - net, S.homeCode) + '</div>'
+      +   (net >= 0 ? '＋' : '−') + fmtStat(Math.abs(net)).replace('−','') + '</div></div>'
+      + '<div style="text-align:right;" class="settle-sub">你先墊了 ' + fmtStat(paid) + '<br>'
+      +   '應分攤 ' + fmtStat(share) + '</div>'
       + '</div>';
 
     if (!mine.length) {
@@ -2551,17 +2699,18 @@ function renderSettlement() {
         var sub = list.reduce(function(s, t){ return s + t.amt; }, 0);
         var out = '<div class="settle-group">'
           + '<div class="settle-group-hd"><span class="settle-dir ' + dirClass + '">' + dirLabel + '</span>'
-          + '<span class="settle-group-sub">' + subtotalLabel + ' ' + fmtMoney(sub, S.homeCode) + '</span></div>';
+          + '<span class="settle-group-sub">' + subtotalLabel + ' ' + fmtStat(sub) + '</span></div>';
         list.forEach(function(t) {
           out += '<div class="settle-row">'
             + '<span class="settle-who">' + escHtml(memberName(otherOf(t))) + '</span>'
-            + '<span class="settle-amt">' + fmtMoney(t.amt, S.homeCode) + '</span></div>';
+            + '<span class="settle-amt">' + fmtStat(t.amt) + '</span></div>';
         });
         return out + '</div>';
       };
       html += renderGroup(owedToMe, 'get', '要付你', '共', function(t){ return t.from; });
       html += renderGroup(iOwe, 'pay', '你要付', '共', function(t){ return t.to; });
     }
+    html += '<button class="settle-repay-btn" onclick="openRepayModal()">💸 記一筆還款</button>';
   } else {
     html += '<div style="font-size:0.8rem;color:var(--ink-2);">登入後這裡會顯示你要付給誰、誰要付你。</div>';
   }
@@ -2574,12 +2723,14 @@ function renderSettlement() {
     transfers.forEach(function(t) {
       html += '<div class="settle-row">'
         + '<span class="settle-who">' + escHtml(memberName(t.from)) + ' → ' + escHtml(memberName(t.to)) + '</span>'
-        + '<span class="settle-amt">' + fmtMoney(t.amt, S.homeCode) + '</span></div>';
+        + '<span class="settle-amt">' + fmtStat(t.amt) + '</span></div>';
     });
   }
   html += '<div style="font-size: 0.7rem;color:var(--ink-2);margin-top:0.6rem;line-height:1.6;">'
-    + '每筆消費各自算給實際代墊的人，不會因為別人墊得比較多，就把這筆錢改算給他。'
+    + '每筆消費各自算給實際代墊的人，不會因為別人墊得比較多，就把這筆錢改算給他。還款後會直接沖銷對應的欠款。'
     + '</div></div></div>';
+
+  html += renderRepayHistory();
 
   // 每人先墊了多少
   var paidList = paidByPerson();
@@ -2588,7 +2739,7 @@ function renderSettlement() {
     paidList.forEach(function(p, i) {
       html += '<div class="rank-row"><span class="rank-no">' + (i+1) + '</span>'
         + '<span class="rank-name">' + escHtml(p.name) + '</span>'
-        + '<span class="rank-amt">' + fmtMoney(p.amt, S.homeCode) + '</span></div>';
+        + '<span class="rank-amt">' + fmtStat(p.amt) + '</span></div>';
     });
     html += '</div>';
   }
@@ -2623,7 +2774,7 @@ function legendHtml(entries, colors, total) {
     var pct = total ? Math.round(e.amt / total * 100) : 0;
     return '<div class="legend-item"><span class="legend-dot" style="background:' + colors[i % colors.length] + '"></span>'
       + '<span>' + escHtml(e.name) + '</span><span class="legend-pct">' + pct + '%</span>'
-      + '<span class="legend-amt">' + fmtMoney(e.amt, S.homeCode) + '</span></div>';
+      + '<span class="legend-amt">' + fmtStat(e.amt) + '</span></div>';
   }).join('');
 }
 function groupSum(data, keyFn) {
@@ -2638,6 +2789,7 @@ function groupSum(data, keyFn) {
     .sort(function(a, b){ return b.amt - a.amt; });
 }
 function renderStats() {
+  if (_statsCurrency !== S.homeCode && _statsCurrency !== S.foreignCode) _statsCurrency = S.homeCode;
   var data = itemsOf(currentBook);
   var total = data.reduce(function(s, i){ return s + toHome(i); }, 0);
   var cats = groupSum(data, function(i){ return i.cat; });
@@ -2646,11 +2798,14 @@ function renderStats() {
   var days = groupSum(data, function(i){ return i.date; });
   var sumOf = function(list){ return list.reduce(function(s, e){ return s + e.amt; }, 0); };
 
-  var html = '<div class="stat-card">'
+  var html = '<div class="stats-cur-row"><button class="cur-btn' + (_statsCurrency === S.homeCode ? ' home' : '')
+    + '" onclick="toggleStatsCurrency()">🔁 ' + symbolOf(_statsCurrency).trim() + ' ' + _statsCurrency + '</button></div>';
+
+  html += '<div class="stat-card">'
     + '<div class="stat-card-title">' + (currentBook === 'shared' ? '👥 公帳總支出' : '👤 我的帳總支出') + '</div>'
-    + '<div class="stat-total">' + fmtMoney(total, S.homeCode) + '</div>'
+    + '<div class="stat-total">' + fmtStat(total) + '</div>'
     + '<div class="stat-total-sub">' + data.length + ' 筆・' + days.length + ' 天'
-    + (days.length ? '・平均每天 ' + fmtMoney(total / days.length, S.homeCode) : '') + '</div></div>';
+    + (days.length ? '・平均每天 ' + fmtStat(total / days.length) : '') + '</div></div>';
 
   if (currentBook === 'shared') html += renderSettlement();
 
@@ -2667,7 +2822,7 @@ function renderStats() {
   stores.forEach(function(s, i) {
     html += '<div class="rank-row"><span class="rank-no">' + (i+1) + '</span>'
       + '<span class="rank-name">' + escHtml(s.name) + '</span>'
-      + '<span class="rank-amt">' + fmtMoney(s.amt, S.homeCode) + '</span></div>';
+      + '<span class="rank-amt">' + fmtStat(s.amt) + '</span></div>';
   });
   html += '</div>';
 
@@ -2680,7 +2835,7 @@ function renderStats() {
     html += '<div style="margin-bottom:0.5rem;">'
       + '<div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--ink);margin-bottom:0.2rem;">'
       +   '<span>' + escHtml(dateLabel(d.name)) + '</span>'
-      +   '<span style="font-weight:600;color:var(--accent-deep);">' + fmtMoney(d.amt, S.homeCode) + '</span></div>'
+      +   '<span style="font-weight:600;color:var(--accent-deep);">' + fmtStat(d.amt) + '</span></div>'
       + '<div style="height:6px;background:var(--card-2);border-radius:3px;overflow:hidden;">'
       +   '<div style="height:100%;width:' + w + '%;background:linear-gradient(90deg,#576f72,#a8846a);"></div>'
       + '</div></div>';
@@ -2823,6 +2978,7 @@ function fbStart() {
 
   listenBook('me');
   listenBook('shared');
+  listenBook('repay');
 }
 function listenBook(book) {
   var col = colFor(book);

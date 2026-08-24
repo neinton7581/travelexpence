@@ -33,6 +33,10 @@ BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
 不要改回「整本帳存成一份文件」的寫法——多人同時記帳會互相覆蓋，也會撞上 1 MB 上限。
 寫入一律走 `putItems(book, [items])` / `dropItems(book, [ids])`，它們負責本機與雲端兩邊。
 
+還有第三個 `BOOKS.repay`（還款紀錄，`shared_repayments`），複用同一套 `LS`／
+`colFor`／`putItems`／`dropItems`／`listenBook` 管線，但它不是消費項目、不會出現
+在 `currentBook` 或帳本分頁裡，只在分帳結算讀取，詳見下方「提前還款」。
+
 ### 設定與權限
 
 設定放 `config/app`，`isAdmin()`（比對 `ADMIN_EMAILS`）決定能不能寫。
@@ -194,11 +198,61 @@ B 的淨額比較大，演算法優先配對大額的），A 墊的那筆錢憑�
 自動合併。這是刻意的取捨，使用者要的是「錢對應到真正代墊的人」優先於「轉帳次數
 最少」，不要為了減少轉帳次數又改回全域最佳化配對。
 
-### 收據品項各自分攤
+### 提前還款（第三本「帳」：`repay`）
 
-`computeBalances()` 算每個人的淨額（先墊金額 − 應分攤），四捨五入的誤差補到絕對值最大的人
-身上確保總和為 0；`computeTransfers()` 用貪婪法把債權債務兩兩抵銷成最少筆轉帳。
-每筆公帳的 `payer`（先墊的人）與 `split`（分攤名單）是計算依據，預設全員均分。
+還款紀錄是第三種資料，走跟 `me`／`shared` 一樣的 `LS` / `BOOKS` / `loadLocalBooks()` /
+`colFor()` / `putItems()` / `dropItems()` / `listenBook()` 共用管線——`colFor('repay')`
+多加一個分支指到 Firestore `shared_repayments`，其他完全複用，不要為了還款另外寫
+一套 CRUD。**但它不是消費項目**：不會進 `renderLedger()`／不會有 book tab，只在
+`renderSettlement()` 裡被讀取跟渲染，`currentBook` 永遠不會是 `'repay'`。
+
+資料形狀：
+
+```js
+repayment = {
+  id, from, to,       // from 付給 to（Email）
+  amt,                 // 一律以 S.homeCode 記錄，不像消費項目有 currency/rate
+  date, note,
+  by, createdAt         // by = 記錄者，決定刪除權限（跟 canDelete() 同一套邏輯，見 canDeleteRepay()）
+}
+```
+
+還款怎麼併進結算計算：把一筆還款當成「`payer = from`、`split = [to]` 的合成消費」
+直接套用同一套加總邏輯，不要另外發明新公式：
+
+- `computeBalances()`：`bal[from] += amt; bal[to] -= amt;`
+- `computePairwiseDebts()`：`add(to, from, amt)`（沖銷 `to` 欠 `from` 的方向）
+
+這樣可以直接沿用既有、已經驗證過「pairwise 總和等於全域淨額」的不變量，不用
+重新證一次——因為結構上就是同一種運算，只是資料來源從 `itemsOf('shared')`
+換成 `itemsOf('repay')`。
+
+**「應分攤」不能用還款後的淨額反推**：舊公式 `share = paid - net` 在只有消費、
+沒有還款時成立，但還款會改變 `net`（這是還款的目的），如果繼續用這條公式反推
+「應分攤」，這個數字會隨著誰還了誰錢跟著跳動，變得沒有意義——使用者要的是
+「應分攤」永遠等於這趟消費本來就該負責的份額。所以額外拉出 `myShareTotal(email)`
+直接加總 `itemsOf('shared')` 裡這個人的 `share`，完全不碰 `itemsOf('repay')`，跟
+`net`／`paid` 三個數字各自獨立計算，不要再互相推導。
+
+刪除權限跟公帳項目一致：只有 `by` 本人能刪（`canDeleteRepay()` / `deleteRepay()`），
+UI 用 `.del-btn` 顯示／隱藏，Firestore 規則裡 `shared_repayments` 的
+`allow delete` 是真正防線（規則全文在 README）。
+
+### 消費統計的幣別切換
+
+`_statsCurrency` 是統計頁專屬的顯示狀態（`S.homeCode` 或 `S.foreignCode`），
+`fmtStat(homeAmt)` = `fmtMoney(statsDisplayAmt(homeAmt), _statsCurrency)`，
+`statsDisplayAmt()` 只在切到外幣時除以 `S.rate` 換算。**這只換算「已經是主要幣別
+的彙總數字」拿去顯示**，不是重新用歷史匯率換算每一筆——`toHome()`／`groupSum()`／
+`computeBalances()` 這些底層計算完全不動，全部照舊用 home currency 累計；
+`renderStats()` 與 `renderSettlement()` 裡原本 `fmtMoney(x, S.homeCode)` 的地方
+全部換成 `fmtStat(x)`，僅此而已。`renderStats()` 開頭跟 `_formCurrency` 一樣的
+防呆：值不合法（null 或不是這兩種幣別）就重設回 `S.homeCode`。
+
+不要把這個切換跟 `toHome()` 的「每筆記錄鎖定當下匯率」混在一起改——那是完全
+不同的兩件事：一個是「這筆錢當初換算成主要幣別時用哪個匯率」（歷史、不可變），
+一個是「彙總完的數字現在要用哪個幣別呈現給使用者看」（當下、可切換、用目前
+匯率）。
 
 ### 資料結構
 
