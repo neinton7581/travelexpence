@@ -67,6 +67,26 @@ BOOKS.shared  公帳   → Firestore shared_items/*         所有登入成員
 本來就在 `fillMemberSelect` 之後又用 `item.payer || item.by || myEmail()`
 明確覆寫一次，不受影響。不要拿掉 `forceMe`，否則這個 bug 會回來。
 
+### 列表上的分攤標籤
+
+`renderLedger()` 裡每個品項原本只顯示「分攤 N 人」（一個數字），使用者反應完全看不出
+分攤給誰，而且這個標籤本身沒有 `data-act`，點了沒反應——只有金額（`.item-amt`，
+`data-act="edititem"`）點得動，使用者不會猜到要點金額才能改分攤。
+
+現在改成：
+
+- 標籤文字直接列出姓名（`sp.map(memberName).join('、')`），分攤名單等於全體成員時
+  顯示「全員均分」，不然就列出實際列在 `split` 裡的人名，不再只顯示人數
+- 標籤本身也掛上 `class="tag split-tag" data-act="edititem"`，跟金額共用同一個
+  `openItemEdit()` 入口——不是另外做一個分攤專用的編輯介面，點標籤跟點金額效果
+  完全一樣，只是多一個更直覺的點擊入口
+- `.tag.split-tag` 加虛線邊框（`:active` 有按壓回饋）跟其他純顯示用的 `.tag` 區隔，
+  提示這個是可以點的
+
+改動只在 `renderLedger()` 的顯示層，`openItemEdit()` / `saveItemEdit()` 本來就支援
+改分攤名單（`editSplit` chips，任何人都能改，不受 `canDelete()` 限制——那條規則只管
+刪除），完全沒動。
+
 ### 刪除權限
 
 公帳的項目只有記錄者（`item.by`）本人能刪。前端用 `canDelete(item)` 決定要顯示 ✕

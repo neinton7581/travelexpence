@@ -345,6 +345,8 @@ button { cursor: pointer; }
 }
 .tag.pay { background: rgba(140,117,97,0.1); color: var(--clay-deep); }
 .tag.qty { background: none; padding-left: 0; color: rgba(87,111,114,0.6); }
+.tag.split-tag { border: 1px dashed rgba(87,111,114,0.35); }
+.tag.split-tag:active { background: rgba(87,111,114,0.14); }
 .badge {
   font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.35rem;
   border-radius: 3px; margin-left: 0.3rem; white-space: nowrap;
@@ -1144,7 +1146,7 @@ friend@gmail.com, 阿明"></textarea>
    沒設定 Firebase 或沒登入時，只有個人帳可用（純本機 localStorage）。
    ══════════════════════════════════════════════════════════ */
 
-var APP_VERSION = 'v2.1.1';
+var APP_VERSION = 'v2.1.2';
 
 /* ── 管理員：只有這些帳號能改設定（要與 Firestore 規則裡的名單一致）── */
 var ADMIN_EMAILS = ['neinton7581@gmail.com'];
@@ -1864,8 +1866,13 @@ function renderLedger() {
         var shareTag = '';
         if (currentBook === 'shared') {
           var sp = (item.split && item.split.length) ? item.split : allMemberEmails();
+          var allE = allMemberEmails();
+          var isAllSplit = sp.length >= allE.length && allE.every(function(e){ return sp.indexOf(e) >= 0; });
+          var splitLabel = isAllSplit ? '全員均分' : sp.map(memberName).join('、');
           shareTag = '<span class="tag who">' + escHtml(memberName(item.payer || item.by)) + ' 付</span>'
-            + (sp.length ? '<span class="tag">分攤 ' + sp.length + ' 人</span>' : '');
+            + (sp.length
+                ? '<span class="tag split-tag" data-act="edititem" data-id="' + escHtml(item.id) + '" title="點擊修改分攤對象">👥 ' + escHtml(splitLabel) + '</span>'
+                : '');
         }
 
         html += '<div class="item-row">'
